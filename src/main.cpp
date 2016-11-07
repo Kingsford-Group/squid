@@ -7,23 +7,23 @@
 using namespace std;
 
 int concorddis=50000, concorddisl=50000;
-int concordidx=50000, concordidxl=50000;
+int concordidx=20, concordidxl=20;
 int weightcutoff=5;
-string inputbam;
-string inputfasta;
-string inputchimbam;
-string suffix="";
+string inputbam="";
+string inputfasta="";
+string inputchimbam="";
+string outputpref="";
 int LowPhredLenThresh=10;
 bool PhredType=0;
 
 int main(int argc, char* argv[]){
     int opt;
-    while((opt=getopt(argc,argv,"b:f:c:s:d:i:w:"))!=EOF){
+    while((opt=getopt(argc,argv,"b:f:c:o:d:i:w:"))!=EOF){
         switch(opt){
             case 'b': inputbam=(string)optarg; break;
             case 'f': inputfasta=(string)optarg; break;
             case 'c': inputchimbam=(string)optarg; break;
-            case 's': suffix="_"+(string)optarg; break;
+            case 'o': outputpref=(string)optarg; break;
             case 'd': concorddis=atoi(optarg); concorddisl=concorddis; break;
             case 'i': concordidx=atoi(optarg); concordidxl=concordidx; break;
             case 'w': weightcutoff=atoi(optarg); break;
@@ -35,16 +35,18 @@ int main(int argc, char* argv[]){
     vector<int> RefLength;
     vector<string> RefSequence;
 
-    size_t stop=inputbam.find_last_of("/");
-    string outputdir=inputbam.substr(0, stop);
-
     BuildRefName(inputbam, RefName, RefTable);
     BuildReference(inputfasta, RefTable, RefLength, RefSequence);
     for(map<string,int>::iterator it=RefTable.begin(); it!=RefTable.end(); it++)
         cout<<"Reference name "<<it->first<<"\t-->\t"<<it->second<<endl;
 
-    SBamrecord_t SBamrecord=BuildMainSBamRecord(RefTable, inputbam);
-    SBamrecord=BuildChimericSBamRecord(SBamrecord, RefTable, inputchimbam);
+    SBamrecord_t SBamrecord;
+    if(inputchimbam.size()!=0){
+        SBamrecord=BuildMainSBamRecord(RefTable, inputbam);
+        SBamrecord=BuildChimericSBamRecord(SBamrecord, RefTable, inputchimbam);
+    }
+    else
+        SBamrecord=BuildBWASBamRecord(RefTable, inputbam);
 
     vector< vector<int> > Read_Node;
     SegmentGraph_t SegmentGraph(RefLength, SBamrecord, Read_Node, weightcutoff);
@@ -56,14 +58,11 @@ int main(int argc, char* argv[]){
             if(Read_Node[i][j]!=-1 && Read_Node[i][j]>=SegmentGraph.vNodes.size())
                 cout<<"out of range\n";
     }
-    //SegmentGraph_t SegmentGraph(argv[3], 0);
-    //SegmentGraph.OutputDegree(argv[4]);
-    //vector< vector<int> > Components=SegmentGraph.ReadComponents(argv[4]);
 
-    SegmentGraph.OutputConnectedComponent(outputdir+"/graph"+suffix+".txt");
+    SegmentGraph.OutputConnectedComponent(outputpref+"/graph.txt");
     vector< vector<int> > Components=SegmentGraph.Ordering();
 
-    ofstream output0(outputdir+"/component_pri"+suffix+".txt", ios::out);
+    ofstream output0(outputpref+"/component_pri.txt", ios::out);
     output0<<"# component_id\tnodes\n";
     for(int i=0; i<Components.size(); i++){
         output0<<i<<'\t';
@@ -89,9 +88,8 @@ int main(int argc, char* argv[]){
     for(int i=0; i<Components.size(); i++)
         for(int j=0; j<Components[i].size(); j++)
             Node_NewChr[abs(Components[i][j])-1]=make_pair(i, j);
-    //SegmentGraph.OutputNewGenome(Components, RefSequence, RefName, argv[4]);
 
-    ofstream output(outputdir+"/component"+suffix+".txt", ios::out);
+    ofstream output(outputpref+"/component.txt", ios::out);
     output<<"# component_id\tnodes\n";
     for(int i=0; i<Components.size(); i++){
         output<<i<<'\t';
@@ -101,37 +99,13 @@ int main(int argc, char* argv[]){
     }
     output.close();
 
-    /*ofstream outputgood(outputdir+"./readnames_good"+suffix+".txt", ios::out);
-    ofstream outputbad(outputdir+"./readnames_bad"+suffix+".txt", ios::out);
-    int exolddis=0, exnewdis=0, shared=0, count=0, numdis=0;
-    for(vector<ReadRec_t>::iterator it=SBamrecord.begin(); it!=SBamrecord.end(); it++){
-        bool issplited=false;
-        for(int i=0; i<Read_Node[count].size(); i++)
-            if(Read_Node[count][i]==-1)
-                issplited=true;
-        bool isolddiscordant=it->IsDiscordant();
-        it->ModifybyGraph(SegmentGraph, Components, Read_Node[count], Node_NewChr); count++;
-        bool isnewdiscordant=it->IsDiscordant();
-        if(isolddiscordant && !isnewdiscordant)
-            exolddis++;
-        else if(!isolddiscordant && isnewdiscordant && !issplited)
-            exnewdis++;
-        if(isolddiscordant && isnewdiscordant)
-            shared++;
-        // output read name
-        if(isnewdiscordant)
-            outputbad<<it->Qname<<endl;
-        else
-            outputgood<<it->Qname<<endl;
-    }
-    cout<<exolddis<<'\t'<<exnewdis<<'\t'<<shared<<endl;*/
-
-    //UpdateReference(SegmentGraph, Components, RefLength, RefSequence);
-    //WriteConcordantBamFile(SBamrecord, RefLength, argv[1], outputdir+"/ModifiedAlignment"+suffix+".bam");
-
     int concordthresh=50000;
     sort(SegmentGraph.vEdges.begin(), SegmentGraph.vEdges.end(),  [](Edge_t a, Edge_t b){return a.Weight>b.Weight;});
-    ofstream output3(outputdir+"/discordantedges"+suffix+".txt", ios::out);
+    ofstream output3(outputpref+"/discordantedges.txt", ios::out);
+    output3<<"# ";
+    for(int i=0; i<argc; i++)
+        output3<<argv[i]<<" ";
+    output3<<endl;
     output3<<"# Ind1\tNode1\tHead1\tInd2\tNode2\tHead2\tWeight\n";
     for(int i=0; i<SegmentGraph.vEdges.size(); i++){
         int ind1=SegmentGraph.vEdges[i].Ind1, ind2=SegmentGraph.vEdges[i].Ind2;
