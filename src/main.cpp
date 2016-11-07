@@ -83,7 +83,7 @@ int main(int argc, char* argv[]){
             Node_NewChr[abs(Components[i][j])-1]=make_pair(i, j);
 
     WriteComponents(outputpref+"_component.txt", Components);
-    WriteBEDPE(outputpref+"_sv.txt", SegmentGraph, Components, Node_NewChr);
+    WriteBEDPE(outputpref+"_sv.txt", SegmentGraph, Components, Node_NewChr, RefName);
 
     /*int concordthresh=50000;
     sort(SegmentGraph.vEdges.begin(), SegmentGraph.vEdges.end(),  [](Edge_t a, Edge_t b){return a.Weight>b.Weight;});
