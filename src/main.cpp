@@ -3,6 +3,7 @@
 #include "BPNode.h"
 #include "BPEdge.h"
 #include "SegmentGraph.h"
+#include "WriteIO.h"
 
 using namespace std;
 
@@ -59,18 +60,10 @@ int main(int argc, char* argv[]){
                 cout<<"out of range\n";
     }
 
-    SegmentGraph.OutputConnectedComponent(outputpref+"/graph.txt");
+    SegmentGraph.OutputConnectedComponent(outputpref+"_graph.txt");
     vector< vector<int> > Components=SegmentGraph.Ordering();
 
-    ofstream output0(outputpref+"/component_pri.txt", ios::out);
-    output0<<"# component_id\tnodes\n";
-    for(int i=0; i<Components.size(); i++){
-        output0<<i<<'\t';
-        for(int j=0; j<Components[i].size()-1; j++)
-            output0<<Components[i][j]<<",";
-        output0<<Components[i][Components[i].size()-1]<<endl;
-    }
-    output0.close();
+    WriteComponents(outputpref+"_component_pri.txt", Components);
 
     map<int,int> NewIndex;
     vector<Node_t> NewNodeChr;
@@ -89,19 +82,12 @@ int main(int argc, char* argv[]){
         for(int j=0; j<Components[i].size(); j++)
             Node_NewChr[abs(Components[i][j])-1]=make_pair(i, j);
 
-    ofstream output(outputpref+"/component.txt", ios::out);
-    output<<"# component_id\tnodes\n";
-    for(int i=0; i<Components.size(); i++){
-        output<<i<<'\t';
-        for(int j=0; j<Components[i].size()-1; j++)
-            output<<Components[i][j]<<",";
-        output<<Components[i][Components[i].size()-1]<<endl;
-    }
-    output.close();
+    WriteComponents(outputpref+"_component.txt", Components);
+    WriteBEDPE(outputpref+"_sv.txt", SegmentGraph, Components, Node_NewChr);
 
-    int concordthresh=50000;
+    /*int concordthresh=50000;
     sort(SegmentGraph.vEdges.begin(), SegmentGraph.vEdges.end(),  [](Edge_t a, Edge_t b){return a.Weight>b.Weight;});
-    ofstream output3(outputpref+"/discordantedges.txt", ios::out);
+    ofstream output3(outputpref+"_discordantedges.txt", ios::out);
     output3<<"# ";
     for(int i=0; i<argc; i++)
         output3<<argv[i]<<" ";
@@ -121,5 +107,5 @@ int main(int argc, char* argv[]){
             }
         }
     }
-    output3.close();
+    output3.close();*/
 }
