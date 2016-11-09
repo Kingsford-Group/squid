@@ -1,0 +1,1 @@
+g++ -std=c++11 -o squid main.cpp ReadRec.cpp SegmentGraph.cpp -I ~/Softwares/bamtools-2.4.0/include/ -L ~/Softwares/bamtools-2.4.0/lib/ -I ~/Softwares/gurobi701/linux64/include/ -L ~/Softwares/gurobi701/linux64/lib/ -lbamtools -lgurobi_c++ -lgurobi70 -g -D_GLIBCXX_USE_CXX11_ABI=0

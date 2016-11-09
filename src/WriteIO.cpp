@@ -35,7 +35,7 @@ void WriteBEDPE(string outputfile, SegmentGraph_t& SegmentGraph, vector< vector<
 				output<<(SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Position+SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Length)<<'\t';
 				output<<".\t";
 				output<<(SegmentGraph.vEdges[i].Head1?"-\t":"+\t");
-				output<<(SegmentGraph.vEdges[i].Head2?"+\t":"-\t");
+				output<<(SegmentGraph.vEdges[i].Head2?"-\t":"+\t");
 				output<<SegmentGraph.vEdges[i].Weight<<endl;
 			}
 			else if(pos1.first==pos2.first && pos1.second>pos2.second && SegmentGraph.vEdges[i].Head2==(Components[pos2.first][pos2.second]<0) && SegmentGraph.vEdges[i].Head1==(Components[pos1.first][pos1.second]>0)){
@@ -47,7 +47,7 @@ void WriteBEDPE(string outputfile, SegmentGraph_t& SegmentGraph, vector< vector<
 				output<<(SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Position+SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Length)<<'\t';
 				output<<".\t";
 				output<<(SegmentGraph.vEdges[i].Head1?"-\t":"+\t");
-				output<<(SegmentGraph.vEdges[i].Head2?"+\t":"-\t");
+				output<<(SegmentGraph.vEdges[i].Head2?"-\t":"+\t");
 				output<<SegmentGraph.vEdges[i].Weight<<endl;
 			}
 		}

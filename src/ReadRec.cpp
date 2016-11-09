@@ -3,6 +3,8 @@
 
 ReadRec_t::ReadRec_t(BamAlignment record){
     Qname=record.Name;
+    if(Qname.substr(Qname.size()-2)=="/1" || Qname.substr(Qname.size()-2)=="/2")
+        Qname=Qname.substr(0, Qname.size()-2);
     MultiFilter=false;
     int32_t ReadPos=0, RefPos=record.Position, TotalLen=0, LowPhredLen=0, tmpLowPhredLen=0;
     for(vector<CigarOp>::const_iterator itcigar=record.CigarData.begin(); itcigar!=record.CigarData.end(); itcigar++)
@@ -162,7 +164,7 @@ bool ReadRec_t::IsEndDiscordant(bool _isfirst) const{
 
 bool ReadRec_t::IsPairDiscordant(bool needcheck) const{
     if(FirstRead.size()==0 || SecondMate.size()==0)
-        return true;
+        return false;
     else{
         if(needcheck){
             if(IsEndDiscordant(true) || IsEndDiscordant(false))
@@ -358,6 +360,18 @@ SBamrecord_t BuildBWASBamRecord(const std::map<string,int> & RefTable, string ba
         }
         SBamrecord.clear();
         for(SBamrecord_t::iterator it=newSBamrecord.begin(); it!=newSBamrecord.end(); it++){
+            int xlen=0; // check whether first read is multi-aligned, but without XA tag
+            for(vector<SingleBamRec_t>::iterator itsingle=it->FirstRead.begin(); itsingle!=it->FirstRead.end(); itsingle++)
+                xlen+=itsingle->MatchRead;
+            if(xlen>=2*it->FirstTotalLen){
+                it->FirstRead.clear(); it->MultiFilter=true;
+            }
+            xlen=0; // check whether second mate is multi-aligned, but without XA tag
+            for(vector<SingleBamRec_t>::iterator itsingle=it->SecondMate.begin(); itsingle!=it->SecondMate.end(); itsingle++)
+                xlen+=itsingle->MatchRead;
+            if(xlen>=2*it->SecondTotalLen){
+                it->SecondMate.clear(); it->MultiFilter=true;
+            }
             it->SortbyReadPos();
             SBamrecord.push_back((*it));
         }
