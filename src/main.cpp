@@ -34,10 +34,8 @@ int main(int argc, char* argv[]){
     map<string, int> RefTable;
     vector<string> RefName;
     vector<int> RefLength;
-    vector<string> RefSequence;
 
-    BuildRefName(inputbam, RefName, RefTable);
-    BuildReference(inputfasta, RefTable, RefLength, RefSequence);
+    BuildRefName(inputbam, RefName, RefTable, RefLength);
     for(map<string,int>::iterator it=RefTable.begin(); it!=RefTable.end(); it++)
         cout<<"Reference name "<<it->first<<"\t-->\t"<<it->second<<endl;
 

@@ -252,7 +252,10 @@ string ReadRec_t::Print(){
     return info;
 };
 
-void BuildRefName(string bamfile, vector<string>& RefName, std::map<string,int> & RefTable){
+void BuildRefName(string bamfile, vector<string>& RefName, std::map<string,int> & RefTable, vector<int>& RefLength){
+    RefName.clear();
+    RefTable.clear();
+    RefLength.clear();
     BamReader bamreader; bamreader.Open(bamfile);
     if(bamreader.IsOpen()){
         int count=0;
@@ -260,6 +263,7 @@ void BuildRefName(string bamfile, vector<string>& RefName, std::map<string,int> 
         for(SamSequenceIterator it=header.Sequences.Begin();it!=header.Sequences.End();it++){
             RefName.push_back(it->Name);
             RefTable[it->Name]=count++;
+            RefLength.push_back(stoi(it->Length));
         }
     }
     else

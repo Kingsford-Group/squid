@@ -54,7 +54,7 @@ public:
 
 typedef vector<ReadRec_t> SBamrecord_t;
 
-void BuildRefName(string bamfile, vector<string>& RefName, std::map<string,int>& RefTable);
+void BuildRefName(string bamfile, vector<string>& RefName, std::map<string,int>& RefTable, vector<int>& RefLength);
 
 void BuildReference(string fafile, const std::map<string,int>& RefTable, vector<int>& RefLength, vector<string>& RefSequence);
 
