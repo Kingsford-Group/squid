@@ -100,13 +100,13 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, SBamrecord_t& SBamr
 				}
 			}
 			if(!firstinserted && !secondinserted){
-				if(it->FirstRead.front().ReadPos > 15 && !it->FirstLowPhred)
+				if(it->FirstRead.size()!=0 && it->FirstRead.front().ReadPos > 15 && !it->FirstLowPhred)
 					PartAlignPos.push_back(make_pair(it->FirstRead[0].RefID, (it->FirstRead[0].IsReverse)? (it->FirstRead[0].RefPos+it->FirstRead[0].MatchRef) : (it->FirstRead[0].RefPos)));
-				if(it->FirstTotalLen-it->FirstRead.back().ReadPos-it->FirstRead.back().MatchRead > 15 && !it->FirstLowPhred)
+				if(it->FirstRead.size()!=0 && it->FirstTotalLen-it->FirstRead.back().ReadPos-it->FirstRead.back().MatchRead > 15 && !it->FirstLowPhred)
 					PartAlignPos.push_back(make_pair(it->FirstRead.back().RefID, (it->FirstRead.back().IsReverse)? (it->FirstRead.back().RefPos) : (it->FirstRead.back().RefPos+it->FirstRead.back().MatchRef)));
-				if(it->SecondMate.front().ReadPos > 15 && !it->SecondLowPhred)
+				if(it->SecondMate.size()!=0 && it->SecondMate.front().ReadPos > 15 && !it->SecondLowPhred)
 					PartAlignPos.push_back(make_pair(it->SecondMate[0].RefID, (it->SecondMate[0].IsReverse)? (it->SecondMate[0].RefPos+it->SecondMate[0].MatchRef) : (it->SecondMate[0].RefPos)));
-				if(it->SecondTotalLen-it->SecondMate.back().ReadPos-it->SecondMate.back().MatchRead > 15 && !bamdiscordant.back().Same(it->SecondMate.back()) && !it->SecondLowPhred)
+				if(it->SecondMate.size()!=0 && it->SecondTotalLen-it->SecondMate.back().ReadPos-it->SecondMate.back().MatchRead > 15 && !bamdiscordant.back().Same(it->SecondMate.back()) && !it->SecondLowPhred)
 					PartAlignPos.push_back(make_pair(it->SecondMate.back().RefID, (it->SecondMate.back().IsReverse)? (it->SecondMate.back().RefPos) : (it->SecondMate.back().RefPos+it->SecondMate.back().MatchRef)));
 			}
 		}
