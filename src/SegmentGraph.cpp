@@ -8,10 +8,22 @@ void ReverseComplement(string::iterator itbegin, string::iterator itend){
 	std::reverse(itbegin, itend);
 };
 
+pair<int,int> ExtremeValue(vector<int>::iterator itbegin, vector<int>::iterator itend){
+	pair<int,int> x=make_pair(*itbegin, *itbegin);
+	for(vector<int>::iterator it=itbegin; it!=itend; it++){
+		if((*it)>x.second)
+			x.second=(*it);
+		if((*it)<x.first)
+			x.first=(*it);
+	}
+	return x;
+};
+
 SegmentGraph_t::SegmentGraph_t(const vector<int>& RefLength, SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node, int weightcutoff){
 	BuildNode(RefLength, SBamrecord);
-	BuildEdges(SBamrecord, Read_Node, weightcutoff);
-	UpdateNodeLink();
+	BuildEdges(SBamrecord, Read_Node);
+	FilterbyWeight(weightcutoff);
+	FilterbyInterleaving();
 	FilterEdges(weightcutoff);
 	CompressNode(Read_Node);
 	ConnectedComponent();
@@ -496,6 +508,8 @@ void SegmentGraph_t::RawEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& R
 	int firstfrontindex=0, i=0, j=0, splittedcount=0;
 	clock_t starttime=clock();
 	for(vector<ReadRec_t>::iterator it=SBamrecord.begin(); it!=SBamrecord.end(); it++){
+		if(it->FirstRead.size()==0 && it->SecondMate.size()==0)
+			continue;
 		vector<int> tmpRead_Node=LocateRead(firstfrontindex, *it);
 		if(tmpRead_Node[0]!=-1)
 			firstfrontindex=tmpRead_Node[0];
@@ -681,8 +695,7 @@ void SegmentGraph_t::ChimericEdges(SBamrecord_t& SBamrecord, vector< vector<Edge
 	cout<<"Separable reads whose edge don't exist = "<<edgenotexist<<endl;
 };
 
-void SegmentGraph_t::BuildEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node, int weightcutoff){
-	int relaxedweight=min(3, weightcutoff/2); // use relaxed weight first, to filter more multi-linked bad nodes
+void SegmentGraph_t::BuildEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node){
 	vector<Edge_t> tmpEdges; tmpEdges.reserve(vEdges.size());
 	RawEdges(SBamrecord, Read_Node);
 	sort(vEdges.begin(), vEdges.end());
@@ -696,6 +709,11 @@ void SegmentGraph_t::BuildEdges(SBamrecord_t& SBamrecord, vector< vector<int> >&
 	vEdges=tmpEdges;
 	UpdateNodeLink();
 	tmpEdges.clear();
+};
+
+void SegmentGraph_t::FilterbyWeight(int weightcutoff){
+	int relaxedweight=weightcutoff-2; // use relaxed weight first, to filter more multi-linked bad nodes
+	vector<Edge_t> tmpEdges; tmpEdges.reserve(vEdges.size());
 	for(int i=0; i<vEdges.size(); i++){
 		int sumnearweight=0;
 		int chr1=vNodes[vEdges[i].Ind1].Chr, pos1=(vEdges[i].Head1)?vNodes[vEdges[i].Ind1].Position:(vNodes[vEdges[i].Ind1].Position+vNodes[vEdges[i].Ind1].Length);
@@ -717,7 +735,7 @@ void SegmentGraph_t::BuildEdges(SBamrecord_t& SBamrecord, vector< vector<int> >&
 		sort(nearEdges.begin(), nearEdges.end());
 		for(vector<Edge_t>::iterator itedge=nearEdges.begin(); itedge!=nearEdges.end(); itedge++)
 			sumnearweight+=itedge->Weight;
-		if(sumnearweight>weightcutoff-2)
+		if(sumnearweight>relaxedweight)
 			for(int j=0; j<nearEdges.size(); j++){
 				nearEdges[j].GroupWeight=sumnearweight; tmpEdges.push_back(nearEdges[j]);
 			}
@@ -726,6 +744,122 @@ void SegmentGraph_t::BuildEdges(SBamrecord_t& SBamrecord, vector< vector<int> >&
 	vector<Edge_t>::iterator endit=unique(tmpEdges.begin(), tmpEdges.end());
 	tmpEdges.resize(distance(tmpEdges.begin(), endit));
 	vEdges=tmpEdges;
+	UpdateNodeLink();
+};
+
+void SegmentGraph_t::FilterbyInterleaving(){
+	// two types of impossible patterns: interleaving nodes; a node with head edges and tail edges overlapping a lot
+	vector<Edge_t> ImpossibleEdges; ImpossibleEdges.reserve(vEdges.size());
+	vector<Edge_t> tmpEdges; tmpEdges.resize(vEdges.size());
+	for(int i=0; i<vEdges.size(); i++){
+		if(vEdges[i].Ind2-vEdges[i].Ind1<=concordidx ||  (vNodes[vEdges[i].Ind1].Chr==vNodes[vEdges[i].Ind2].Chr && abs(vNodes[vEdges[i].Ind1].Position-vNodes[vEdges[i].Ind2].Position)<=concorddis))
+			continue;
+		bool whetherdelete=false;
+		vector<Edge_t> PotentialEdges; PotentialEdges.push_back(vEdges[i]);
+		vector<int> Anch1Head, Anch2Head;
+		vector<int> Anch1Tail, Anch2Tail;
+		if(vEdges[i].Head1)
+			Anch1Head.push_back(vEdges[i].Ind2);
+		else
+			Anch1Tail.push_back(vEdges[i].Ind2);
+		if(vEdges[i].Head2)
+			Anch2Head.push_back(vEdges[i].Ind1);
+		else
+			Anch2Tail.push_back(vEdges[i].Ind1);
+		int chr1=vNodes[vEdges[i].Ind1].Chr, pos1=(vEdges[i].Head1)?vNodes[vEdges[i].Ind1].Position:(vNodes[vEdges[i].Ind1].Position+vNodes[vEdges[i].Ind1].Length);
+		int chr2=vNodes[vEdges[i].Ind2].Chr, pos2=(vEdges[i].Head2)?vNodes[vEdges[i].Ind2].Position:(vNodes[vEdges[i].Ind2].Position+vNodes[vEdges[i].Ind2].Length);
+		for(int j=i-1; j>-1 && vEdges[j].Ind1>=vEdges[i].Ind1-concordidxl && vNodes[vEdges[j].Ind1].Chr==chr1 && vNodes[vEdges[j].Ind1].Position+vNodes[vEdges[j].Ind1].Length>=pos1-concorddisl; j--){
+			int newpos1=(vEdges[j].Head1)? vNodes[vEdges[j].Ind1].Position:(vNodes[vEdges[j].Ind1].Position+vNodes[vEdges[j].Ind1].Length);
+			int newpos2=(vEdges[j].Head2)? vNodes[vEdges[j].Ind2].Position:(vNodes[vEdges[j].Ind2].Position+vNodes[vEdges[j].Ind2].Length);
+			if(vEdges[j].Ind2>vEdges[i].Ind1 && abs(vEdges[j].Ind2-vEdges[i].Ind2)<=concordidxl && abs(newpos1-pos1)<=concorddisl && abs(newpos2-pos2)<=concorddisl){
+				PotentialEdges.push_back(vEdges[j]);
+				if(vEdges[j].Ind1<=vEdges[i].Ind1 && vEdges[j].Head1)
+					Anch1Head.push_back(vEdges[j].Ind2);
+				else if(vEdges[j].Ind1>=vEdges[i].Ind1 && !vEdges[j].Head1)
+					Anch1Tail.push_back(vEdges[j].Ind2);
+				if(vEdges[j].Ind2<=vEdges[i].Ind2 && vEdges[j].Head2)
+					Anch2Head.push_back(vEdges[j].Ind1);
+				else if(vEdges[j].Ind2>=vEdges[i].Ind2 && !vEdges[j].Head2)
+					Anch2Tail.push_back(vEdges[j].Ind1);
+			}
+		}
+		for(int j=i+1; j<vEdges.size() && vEdges[j].Ind1<=vEdges[i].Ind1+concordidxl && vNodes[vEdges[j].Ind1].Chr==chr1 && vNodes[vEdges[j].Ind1].Position<=pos1+concorddisl; j++){
+			int newpos1=(vEdges[j].Head1)? vNodes[vEdges[j].Ind1].Position:(vNodes[vEdges[j].Ind1].Position+vNodes[vEdges[j].Ind1].Length);
+			int newpos2=(vEdges[j].Head2)? vNodes[vEdges[j].Ind2].Position:(vNodes[vEdges[j].Ind2].Position+vNodes[vEdges[j].Ind2].Length);
+			if(vEdges[j].Ind1<vEdges[i].Ind2 && abs(vEdges[j].Ind2-vEdges[i].Ind2)<=concordidxl && abs(newpos1-pos1)<=concorddisl && abs(newpos2-pos2)<=concorddisl){
+				PotentialEdges.push_back(vEdges[j]);
+				if(vEdges[j].Ind1<=vEdges[i].Ind1 && vEdges[j].Head1)
+					Anch1Head.push_back(vEdges[j].Ind2);
+				else if(vEdges[j].Ind1>=vEdges[i].Ind1 && !vEdges[j].Head1)
+					Anch1Tail.push_back(vEdges[i].Ind2);
+				if(vEdges[j].Ind2<=vEdges[i].Ind2 && vEdges[j].Head2)
+					Anch2Head.push_back(vEdges[j].Ind1);
+				else if(vEdges[j].Ind2>=vEdges[i].Ind2 && !vEdges[j].Head2)
+					Anch2Tail.push_back(vEdges[j].Ind1);
+			}
+		}
+		pair<int,int> E1Head, E1Tail, E2Head, E2Tail;
+		int Mean1Head=0, Mean1Tail=0, Mean2Head=0, Mean2Tail=0;
+		if(Anch1Head.size()!=0){
+			E1Head=ExtremeValue(Anch1Head.begin(), Anch1Head.end());
+			Mean1Head=1.0*(E1Head.first+E1Head.second)/2;
+		}
+		if(Anch1Tail.size()!=0){
+			E1Tail=ExtremeValue(Anch1Tail.begin(), Anch1Tail.end());
+			Mean1Tail=1.0*(E1Tail.first+E1Tail.second)/2;
+		}
+		if(Anch2Head.size()!=0){
+			E2Head=ExtremeValue(Anch2Head.begin(), Anch2Head.end());
+			Mean2Head=1.0*(E2Head.first+E2Head.second)/2;
+		}
+		if(Anch2Tail.size()!=0){
+			E2Tail=ExtremeValue(Anch2Tail.begin(), Anch2Tail.end());
+			Mean2Tail=1.0*(E2Tail.first+E2Tail.second)/2;
+		}
+		/*if((E1Head.first<=E1Tail.first && E1Head.second-E1Tail.first>1) || (E1Tail.first<=E1Head.first && E1Tail.second-E1Head.first>1))
+			whetherdelete=true;
+		else if((E2Head.first<=E2Tail.first && E2Head.second-E2Tail.first>1) || (E2Tail.first<=E2Head.first && E2Tail.second-E2Head.first>1))
+			whetherdelete=true;*/
+		if(!whetherdelete){
+			for(int j=i-1; j>-1 && vEdges[j].Ind1>=vEdges[i].Ind1-concordidxl && vNodes[vEdges[j].Ind1].Chr==chr1 && vNodes[vEdges[j].Ind1].Position+vNodes[vEdges[j].Ind1].Length>=pos1-concorddisl; j--){
+				int newpos1=(vEdges[j].Head1)? vNodes[vEdges[j].Ind1].Position:(vNodes[vEdges[j].Ind1].Position+vNodes[vEdges[j].Ind1].Length);
+				int newpos2=(vEdges[j].Head2)? vNodes[vEdges[j].Ind2].Position:(vNodes[vEdges[j].Ind2].Position+vNodes[vEdges[j].Ind2].Length);
+				if(vEdges[j].Ind2>vEdges[i].Ind1 && abs(vEdges[j].Ind2-vEdges[i].Ind2)<=concordidxl && abs(newpos1-pos1)<=concorddisl && abs(newpos2-pos2)<=concorddisl){
+					if(vEdges[j].Ind1<vEdges[i].Ind1 && !vEdges[j].Head1 && abs(vEdges[j].Ind2-Mean1Head)<abs(vEdges[j].Ind2-Mean1Tail) && Anch1Head.size()!=0 && Anch1Tail.size()!=0)
+						whetherdelete=true; //XXX is comparison of abs should include =?
+					else if(vEdges[j].Ind1>vEdges[i].Ind1 && vEdges[j].Head1 && abs(vEdges[j].Ind2-Mean1Tail)<abs(vEdges[j].Ind2-Mean1Head) && Anch1Head.size()!=0 && Anch1Tail.size()!=0)
+						whetherdelete=true; //XXX is comparison of abs should include =?
+					if(vEdges[j].Ind2<vEdges[i].Ind2 && !vEdges[j].Head2 && abs(vEdges[j].Ind1-Mean2Head)<abs(vEdges[j].Ind1-Mean2Tail) && Anch2Head.size()!=0 && Anch2Tail.size()!=0)
+						whetherdelete=true; //XXX is comparison of abs should include =?
+					else if(vEdges[j].Ind2>vEdges[i].Ind2 && vEdges[j].Head2 && abs(vEdges[j].Ind1-Mean2Tail)<abs(vEdges[j].Ind1-Mean2Head) && Anch2Head.size()!=0 && Anch2Tail.size()!=0)
+						whetherdelete=true; //XXX is comparison of abs should include =?
+				}
+			}
+		}
+		if(!whetherdelete){
+			for(int j=i+1; j<vEdges.size() && vEdges[j].Ind1<=vEdges[i].Ind1+concordidxl && vNodes[vEdges[j].Ind1].Chr==chr1 && vNodes[vEdges[j].Ind1].Position<=pos1+concorddisl; j++){
+				int newpos1=(vEdges[j].Head1)? vNodes[vEdges[j].Ind1].Position:(vNodes[vEdges[j].Ind1].Position+vNodes[vEdges[j].Ind1].Length);
+				int newpos2=(vEdges[j].Head2)? vNodes[vEdges[j].Ind2].Position:(vNodes[vEdges[j].Ind2].Position+vNodes[vEdges[j].Ind2].Length);
+				if(vEdges[j].Ind1<vEdges[i].Ind2 && abs(vEdges[j].Ind2-vEdges[i].Ind2)<=concordidxl && abs(newpos1-pos1)<=concorddisl && abs(newpos2-pos2)<=concorddisl){
+					if(vEdges[j].Ind1<vEdges[i].Ind1 && !vEdges[j].Head1 && abs(vEdges[j].Ind2-Mean1Head)<abs(vEdges[j].Ind2-Mean1Tail) && Anch1Head.size()!=0 && Anch1Tail.size()!=0)
+						whetherdelete=true; //XXX is comparison of abs should include =?
+					else if(vEdges[j].Ind1>vEdges[i].Ind1 && vEdges[j].Head1 && abs(vEdges[j].Ind2-Mean1Tail)<abs(vEdges[j].Ind2-Mean1Head) && Anch1Head.size()!=0 && Anch1Tail.size()!=0)
+						whetherdelete=true; //XXX is comparison of abs should include =?
+					if(vEdges[j].Ind2<vEdges[i].Ind2 && !vEdges[j].Head2 && abs(vEdges[j].Ind1-Mean2Head)<abs(vEdges[j].Ind1-Mean2Tail) && Anch2Head.size()!=0 && Anch2Tail.size()!=0)
+						whetherdelete=true; //XXX is comparison of abs should include =?
+					else if(vEdges[j].Ind2>vEdges[i].Ind2 && vEdges[j].Head2 && abs(vEdges[j].Ind1-Mean2Tail)<abs(vEdges[j].Ind1-Mean2Head) && Anch2Head.size()!=0 && Anch2Tail.size()!=0)
+						whetherdelete=true; //XXX is comparison of abs should include =?
+				}
+			}
+		}
+		if(whetherdelete)
+			ImpossibleEdges.insert(ImpossibleEdges.end(), PotentialEdges.begin(), PotentialEdges.end());
+	}
+	sort(ImpossibleEdges.begin(), ImpossibleEdges.end());
+	vector<Edge_t>::iterator it=set_difference(vEdges.begin(), vEdges.end(), ImpossibleEdges.begin(), ImpossibleEdges.end(), tmpEdges.begin());
+	tmpEdges.resize(distance(tmpEdges.begin(), it));
+	vEdges=tmpEdges;
+	UpdateNodeLink();
 };
 
 void SegmentGraph_t::FilterEdges(int weightcutoff){

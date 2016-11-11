@@ -37,6 +37,7 @@ typedef boost::property_traits<weight_map_type>::value_type weight_type;
 static std::map<char,char> Nucleotide={{'A','T'},{'C','G'},{'G','C'},{'T','A'},{'R','Y'},{'Y','R'},{'S','W'},{'W','S'},{'K','M'},{'M','K'},{'B','V'},{'V','B'},{'D','H'},{'H','D'}, {'N','N'}, {'.','.'},{'-','-'}};
 
 void ReverseComplement(string::iterator itbegin, string::iterator itend);
+pair<int,int> ExtremeValue(vector<int>::iterator itbegin, vector<int>::iterator itend);
 
 struct MinCutEdge_t
 {
@@ -53,14 +54,17 @@ public:
     SegmentGraph_t(){};
     SegmentGraph_t(const vector<int>& RefLength,SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node, int weightcutoff=5);
     SegmentGraph_t(string graphfile, int weightcutoff=5);
-    void BuildNode(const vector<int>& RefLength, SBamrecord_t& SBamrecord); //for bwa
+    void BuildNode(const vector<int>& RefLength, SBamrecord_t& SBamrecord);
+    void BuildEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node);
+    void FilterbyWeight(int weightcutoff);
+    void FilterbyInterleaving();
 
     vector<int> LocateRead(int initialguess, ReadRec_t& ReadRec);
     vector<int> LocateRead(vector<int>& singleRead_Node, ReadRec_t& ReadRec);
 
     void RawEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node);
     void ChimericEdges(SBamrecord_t& SBamrecord, vector< vector<Edge_t> >& DiscordantEdges, vector< vector<int> >& Read_Node, vector<int>& BamIndex);
-    void BuildEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node, int weightcutoff);
+    
     void FilterEdges(int weightcutoff);
     void UpdateNodeLink();
     void CompressNode();
