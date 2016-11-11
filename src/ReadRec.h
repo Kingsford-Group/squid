@@ -20,11 +20,11 @@
 using namespace std;
 using namespace BamTools;
 
-const uint8_t BAM_XS_Forward='+';
-const uint8_t BAM_XS_Reverse='-';
-
-extern bool PhredType; // 0 for phred33 (default), 1 for phred64
-extern int LowPhredLenThresh;
+extern uint16_t ReadLen;
+extern bool Phred_Type;
+extern uint16_t Max_LowPhred_Len;
+extern uint8_t Min_Phred;
+extern uint16_t Min_MapQual;
 
 class SegmentGraph_t;
 

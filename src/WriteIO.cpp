@@ -22,7 +22,7 @@ void WriteBEDPE(string outputfile, SegmentGraph_t& SegmentGraph, vector< vector<
 		int ind1=SegmentGraph.vEdges[i].Ind1, ind2=SegmentGraph.vEdges[i].Ind2;
 		bool flag_chr=(SegmentGraph.vNodes[ind1].Chr==SegmentGraph.vNodes[ind2].Chr);
 		bool flag_ori=(SegmentGraph.vEdges[i].Head1==false && SegmentGraph.vEdges[i].Head2==true);
-		bool flag_dist=(SegmentGraph.vNodes[ind2].Position-SegmentGraph.vNodes[ind1].Position-SegmentGraph.vNodes[ind1].Length<=concorddis || ind2-ind1<=concordidx);
+		bool flag_dist=(SegmentGraph.vNodes[ind2].Position-SegmentGraph.vNodes[ind1].Position-SegmentGraph.vNodes[ind1].Length<=Concord_Dist_Pos || ind2-ind1<=Concord_Dist_Idx);
 		if(!flag_chr || !flag_ori || !flag_dist){
 			pair<int,int> pos1=Node_NewChr[SegmentGraph.vEdges[i].Ind1];
 			pair<int,int> pos2=Node_NewChr[SegmentGraph.vEdges[i].Ind2];

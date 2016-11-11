@@ -28,7 +28,10 @@
 
 using namespace std;
 
-extern int concorddis, concorddisl, concordidx, concordidxl;
+extern int Concord_Dist_Pos;
+extern int Concord_Dist_Idx;
+extern int Min_Edge_Weight;
+extern uint16_t ReadLen;
 
 typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::undirectedS, boost::no_property, boost::property<boost::edge_weight_t, int> > undirected_graph;
 typedef boost::property_map<undirected_graph, boost::edge_weight_t>::type weight_map_type;
@@ -52,11 +55,11 @@ public:
     vector<int> Label;
 public:
     SegmentGraph_t(){};
-    SegmentGraph_t(const vector<int>& RefLength,SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node, int weightcutoff=5);
-    SegmentGraph_t(string graphfile, int weightcutoff=5);
+    SegmentGraph_t(const vector<int>& RefLength,SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node);
+    SegmentGraph_t(string graphfile);
     void BuildNode(const vector<int>& RefLength, SBamrecord_t& SBamrecord);
     void BuildEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node);
-    void FilterbyWeight(int weightcutoff);
+    void FilterbyWeight();
     void FilterbyInterleaving();
 
     vector<int> LocateRead(int initialguess, ReadRec_t& ReadRec);
@@ -65,7 +68,7 @@ public:
     void RawEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node);
     void ChimericEdges(SBamrecord_t& SBamrecord, vector< vector<Edge_t> >& DiscordantEdges, vector< vector<int> >& Read_Node, vector<int>& BamIndex);
     
-    void FilterEdges(int weightcutoff);
+    void FilterEdges();
     void UpdateNodeLink();
     void CompressNode();
     void CompressNode(vector< vector<int> >& Read_Node);

@@ -10,9 +10,9 @@ ReadRec_t::ReadRec_t(BamAlignment record){
     for(vector<CigarOp>::const_iterator itcigar=record.CigarData.begin(); itcigar!=record.CigarData.end(); itcigar++)
         if(itcigar->Type=='M' || itcigar->Type=='S' || itcigar->Type=='H' || itcigar->Type=='I' || itcigar->Type=='=' || itcigar->Type=='X')
             TotalLen+=itcigar->Length;
-    if(PhredType){
+    if(Phred_Type){
         for(int i=0; i<record.Qualities.size(); i++){
-            if(record.Qualities[i]<'$')
+            if(record.Qualities[i]<(char)(33+Min_Phred))
                 tmpLowPhredLen++;
             else
                 tmpLowPhredLen=0;
@@ -22,7 +22,7 @@ ReadRec_t::ReadRec_t(BamAlignment record){
     }
     else{
         for(int i=0; i<record.Qualities.size(); i++){
-            if(record.Qualities[i]<'C')
+            if(record.Qualities[i]<(char)(64+Min_Phred))
                 tmpLowPhredLen++;
             else
                 tmpLowPhredLen=0;
@@ -31,10 +31,10 @@ ReadRec_t::ReadRec_t(BamAlignment record){
         }
     }
     if(record.IsFirstMate()){
-        FirstTotalLen=TotalLen; SecondTotalLen=0; FirstLowPhred=(LowPhredLen>LowPhredLenThresh);
+        FirstTotalLen=TotalLen; SecondTotalLen=0; FirstLowPhred=(LowPhredLen>Max_LowPhred_Len);
     }
     else{
-        SecondTotalLen=TotalLen; FirstTotalLen=0; SecondLowPhred=(LowPhredLen>LowPhredLenThresh);
+        SecondTotalLen=TotalLen; FirstTotalLen=0; SecondLowPhred=(LowPhredLen>Max_LowPhred_Len);
     }
     for(vector<CigarOp>::const_iterator itcigar=record.CigarData.begin(); itcigar!=record.CigarData.end(); itcigar++){
         if(itcigar->Type=='S' || itcigar->Type=='H'){
@@ -313,6 +313,7 @@ void UpdateReference(const SegmentGraph_t& SegmentGraph, const vector< vector<in
 };
 
 SBamrecord_t BuildBWASBamRecord(const std::map<string,int> & RefTable, string bamfile){
+    vector<uint16_t> sample_ReadLen; sample_ReadLen.reserve(5);
     time_t CurrentTime;
     string CurrentTimeStr;
     SBamrecord_t SBamrecord; SBamrecord.reserve(66536);
@@ -326,9 +327,11 @@ SBamrecord_t BuildBWASBamRecord(const std::map<string,int> & RefTable, string ba
         BamAlignment record;
         while(bamreader.GetNextAlignment(record)){
             bool XAtag=record.HasTag("XA");
-            if(record.IsMapped() && record.IsMateMapped() && !record.IsDuplicate() && record.MapQuality>0 && !XAtag){
+            if(record.IsMapped() && record.IsMateMapped() && !record.IsDuplicate() && record.MapQuality>=Min_MapQual && !XAtag){
                 ReadRec_t tmp(record);
                 SBamrecord.push_back(tmp);
+                if(sample_ReadLen.size()<sample_ReadLen.capacity())
+                    sample_ReadLen.push_back(max(tmp.FirstTotalLen, tmp.SecondTotalLen));
             }
             else if(XAtag)
                 MultiAlignedName.push_back(record.Name);
@@ -390,6 +393,10 @@ SBamrecord_t BuildBWASBamRecord(const std::map<string,int> & RefTable, string ba
         time(&CurrentTime);
         CurrentTimeStr=ctime(&CurrentTime);
         cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] "<<"Finish sorting bam records\n";
+
+        // infer read length
+        sort(sample_ReadLen.begin(), sample_ReadLen.end());
+        ReadLen=sample_ReadLen[(int)sample_ReadLen.size()/2];
     }
     else
         cout<<"Cannot open bamfile!"<<endl;
@@ -397,15 +404,18 @@ SBamrecord_t BuildBWASBamRecord(const std::map<string,int> & RefTable, string ba
 };
 
 SBamrecord_t BuildMainSBamRecord(const std::map<string,int> & RefTable, string bamfile){
+    vector<uint16_t> sample_ReadLen; sample_ReadLen.reserve(5);
     SBamrecord_t SBamrecord; SBamrecord.reserve(66536);
     SBamrecord_t newSBamrecord;
     BamReader bamreader; bamreader.Open(bamfile);
     if(bamreader.IsOpen()){
         BamAlignment record;
         while(bamreader.GetNextAlignment(record)){
-            if(record.IsMapped() && !record.IsDuplicate() && record.MapQuality==255){
+            if(record.IsMapped() && !record.IsDuplicate() && record.MapQuality>=Min_MapQual){
                 ReadRec_t tmp(record);
                 SBamrecord.push_back(tmp);
+                if(sample_ReadLen.size()<sample_ReadLen.capacity())
+                    sample_ReadLen.push_back(max(tmp.FirstTotalLen, tmp.SecondTotalLen));
                 if(SBamrecord.capacity()==SBamrecord.size())
                     SBamrecord.reserve(SBamrecord.size()*2);
             }
@@ -435,6 +445,10 @@ SBamrecord_t BuildMainSBamRecord(const std::map<string,int> & RefTable, string b
         for(SBamrecord_t::iterator it=newSBamrecord.begin();it!=newSBamrecord.end();it++)
             it->SortbyReadPos();
         cout<<"Finish building bam record\tsize="<<newSBamrecord.size()<<endl;
+
+        // infer read length
+        sort(sample_ReadLen.begin(), sample_ReadLen.end());
+        ReadLen=sample_ReadLen[(int)sample_ReadLen.size()/2];
     }
     else
         cout<<"Cannot open bamfile!"<<endl;
