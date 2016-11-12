@@ -4,7 +4,7 @@
 #include "BPEdge.h"
 #include "SegmentGraph.h"
 #include "WriteIO.h"
-#include "config.h"
+#include "Config.h"
 
 using namespace std;
 
