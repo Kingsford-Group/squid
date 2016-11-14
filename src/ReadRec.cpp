@@ -380,7 +380,8 @@ SBamrecord_t BuildBWASBamRecord(const std::map<string,int> & RefTable, string ba
                 it->SecondMate.clear(); it->MultiFilter=true;
             }
             it->SortbyReadPos();
-            SBamrecord.push_back((*it));
+            if(it->FirstRead.size()!=0 || it->SecondMate.size()!=0)
+                SBamrecord.push_back((*it));
         }
         time(&CurrentTime);
         CurrentTimeStr=ctime(&CurrentTime);
