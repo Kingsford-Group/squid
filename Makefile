@@ -1,1 +1,13 @@
-g++ -std=c++11 -o bin/squid src/main.cpp src/ReadRec.cpp src/SegmentGraph.cpp src/WriteIO.cpp src/Config.cpp -I ~/Softwares/bamtools-2.4.0/include/ -L ~/Softwares/bamtools-2.4.0/lib/ -I ~/Softwares/gurobi701/linux64/include/ -L ~/Softwares/gurobi701/linux64/lib/ -lbamtools -lgurobi_c++ -lgurobi70 -g -D_GLIBCXX_USE_CXX11_ABI=0
+CC = gcc
+CXX = g++
+CXXFLAGS = -std=c++11 
+INCLUDES = -I ~/Software/bamtools/include/ -I /opt/gurobi651/linux64/include/
+LDFLAGS = -L ~/Software/bamtools/lib/ -L /opt/gurobi651/linux64/lib/
+LDLIBS = -lbamtools -lgurobi_c++ -lgurobi65 -lz
+
+SRCS = src/main.cpp src/ReadRec.cpp src/SegmentGraph.cpp src/WriteIO.cpp src/Config.cpp
+
+all: squid
+
+squid:
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(LDFLAGS) -o bin/squid $(SRCS) $(LDLIBS)
