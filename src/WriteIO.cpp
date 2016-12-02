@@ -2,6 +2,28 @@
 
 using namespace std;
 
+vector< vector<int> > ReadComponents(string file){
+	ifstream input(file);
+	string line;
+	vector< vector<int> > Components;
+	while(getline(input,line)){
+		if(line[0]=='#')
+			continue;
+		else{
+			size_t start=line.find_first_of('\t');
+			line=line.substr(start+1);
+			vector<string> strs;
+			boost::split(strs, line, boost::is_any_of(","));
+			vector<int> tmp;
+			for(int i=0; i<strs.size(); i++)
+				tmp.push_back(stoi(strs[i]));
+			Components.push_back(tmp);
+		}
+	}
+	input.close();
+	return Components;
+};
+
 void WriteComponents(string outputfile, vector< vector<int> > Components){
 	ofstream output(outputfile, ios::out);
 	output<<"# component_id\tnodes\n";
@@ -51,6 +73,40 @@ void WriteBEDPE(string outputfile, SegmentGraph_t& SegmentGraph, vector< vector<
 				output<<SegmentGraph.vEdges[i].Weight<<endl;
 			}
 		}
+	}
+	output.close();
+};
+
+void OutputNewGenome(SegmentGraph_t& SegmentGraph, vector< vector<int> >& Components, const vector<string>& RefSequence, const vector<string>& RefName, string outputfile){
+	ofstream output(outputfile, ios::out);
+	for(int i=0; i<Components.size(); i++){
+		string info="PA:", seq, tmpseq;
+		for(int j=0; j<Components[i].size(); j++){
+			int k;
+			for(k=j+1; k<Components[i].size() && Components[i][k]-Components[i][k-1]==1 && SegmentGraph.vNodes[abs(Components[i][j])-1].Chr==SegmentGraph.vNodes[abs(Components[i][k])-1].Chr; k++){}
+			if(Components[i][j]>0){
+				int curChr=SegmentGraph.vNodes[abs(Components[i][j])-1].Chr;
+				int curStart=SegmentGraph.vNodes[abs(Components[i][j])-1].Position;
+				int curLen=SegmentGraph.vNodes[abs(Components[i][k-1])-1].Position+SegmentGraph.vNodes[abs(Components[i][k-1])-1].Length-SegmentGraph.vNodes[abs(Components[i][j])-1].Position;
+				tmpseq=RefSequence[curChr].substr(curStart, curLen);
+				info+="{"+RefName[curChr]+","+to_string(curStart)+","+to_string(curLen)+"}";
+			}
+			else{
+				int curChr=SegmentGraph.vNodes[abs(Components[i][k-1])-1].Chr;
+				int curStart=SegmentGraph.vNodes[abs(Components[i][k-1])-1].Position;
+				int curLen=SegmentGraph.vNodes[abs(Components[i][j])-1].Position+SegmentGraph.vNodes[abs(Components[i][j])-1].Length-SegmentGraph.vNodes[abs(Components[i][k-1])-1].Position;
+				tmpseq=RefSequence[curChr].substr(curStart, curLen);
+				info+="{"+RefName[curChr]+","+to_string(curStart)+","+to_string(curLen)+"}";
+			}
+			if(Components[i][j]<0)
+				ReverseComplement(tmpseq.begin(), tmpseq.end());
+			seq+=tmpseq;
+			info+=((Components[i][j]<0)?"R-":"F-");
+			j=k-1;
+		}
+		info=info.substr(0, info.size()-1);
+		output<<">chr"<<(i+1)<<'\t'<<"LN:"<<seq.size()<<'\t'<<info<<endl;
+		output<<seq<<endl;
 	}
 	output.close();
 };

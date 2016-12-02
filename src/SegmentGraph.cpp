@@ -48,7 +48,6 @@ SegmentGraph_t::SegmentGraph_t(string graphfile){
 	}
 	input.close();
 	UpdateNodeLink();
-	CompressNode();
 	ConnectedComponent();
 	cout<<vNodes.size()<<'\t'<<vEdges.size()<<endl;
 };
@@ -1189,7 +1188,7 @@ void SegmentGraph_t::ConnectedComponent(){
 	cout<<"Maximum connected component size="<<maxcomponentsize<<endl;
 };
 
-void SegmentGraph_t::OutputConnectedComponent(string outputfile){
+void SegmentGraph_t::OutputGraph(string outputfile){
 	ofstream output(outputfile, ios::out);
 	output<<"# type=node\tid\tChr\tPosition\tEnd\tSupport\tAvgDepth\tLabel\n";
 	output<<"# type=edge\tid\tInd1\tHead1\tInd2\tHead2\tWeight\n";
@@ -1503,28 +1502,6 @@ void SegmentGraph_t::GenerateILP(std::map<int,int>& CompNodes, vector<Edge_t>& C
 			}
 		}
 	}
-};
-
-vector< vector<int> > SegmentGraph_t::ReadComponents(string file){
-	ifstream input(file);
-	string line;
-	vector< vector<int> > Components;
-	while(getline(input,line)){
-		if(line[0]=='#')
-			continue;
-		else{
-			size_t start=line.find_first_of('\t');
-			line=line.substr(start+1);
-			vector<string> strs;
-			boost::split(strs, line, boost::is_any_of(","));
-			vector<int> tmp;
-			for(int i=0; i<strs.size(); i++)
-				tmp.push_back(stoi(strs[i]));
-			Components.push_back(tmp);
-		}
-	}
-	input.close();
-	return Components;
 };
 
 void SegmentGraph_t::SimplifyComponents(vector< vector<int> >& Components, map<int,int>& NewIndex, vector<Node_t>& NewNodeChr, vector< vector<int> >& LowSupportNode, vector<int>& ReferenceNode, vector<bool>& RelativePosition, int weightcutoff){
@@ -2180,32 +2157,4 @@ vector< vector<int> > SegmentGraph_t::MergeComponents(vector< vector<int> >& Com
 	}
 	NewComponents.reserve(NewComponents.size());
 	return NewComponents;
-};
-
-void SegmentGraph_t::OutputNewGenome(vector< vector<int> >& Components, const vector<string>& RefSequence, const vector<string>& RefName, string outputfile){
-	ofstream output(outputfile, ios::out);
-	for(int i=0; i<Components.size(); i++){
-		string info="PA:", seq, tmpseq;
-		for(int j=0; j<Components[i].size(); j++){
-			int k;
-			for(k=j+1; k<Components[i].size() && Components[i][k]-Components[i][k-1]==1 && vNodes[abs(Components[i][j])-1].Chr==vNodes[abs(Components[i][k])-1].Chr; k++){}
-			if(Components[i][j]>0){
-				tmpseq=RefSequence[vNodes[abs(Components[i][j])-1].Chr].substr(vNodes[abs(Components[i][j])-1].Position, vNodes[abs(Components[i][k-1])-1].Position+vNodes[abs(Components[i][k-1])-1].Length-vNodes[abs(Components[i][j])-1].Position);
-				info+="{"+RefName[vNodes[abs(Components[i][j])-1].Chr]+","+to_string(vNodes[abs(Components[i][j])-1].Position)+","+to_string(vNodes[abs(Components[i][k-1])-1].Position+vNodes[abs(Components[i][k-1])-1].Length-vNodes[abs(Components[i][j])-1].Position)+"}";
-			}
-			else{
-				tmpseq=RefSequence[vNodes[abs(Components[i][k-1])-1].Chr].substr(vNodes[abs(Components[i][k-1])-1].Position, vNodes[abs(Components[i][j])-1].Position+vNodes[abs(Components[i][j])-1].Length-vNodes[abs(Components[i][k-1])-1].Position);
-				info+="{"+RefName[vNodes[abs(Components[i][k-1])-1].Chr]+","+to_string(vNodes[abs(Components[i][k-1])-1].Position)+","+to_string(vNodes[abs(Components[i][j])-1].Position+vNodes[abs(Components[i][j])-1].Length-vNodes[abs(Components[i][k-1])-1].Position)+"}";
-			}
-			if(Components[i][j]<0)
-				ReverseComplement(tmpseq.begin(), tmpseq.end());
-			seq+=tmpseq;
-			info+=((Components[i][j]<0)?"R-":"F-");
-			j=k-1;
-		}
-		info=info.substr(0, info.size()-1);
-		output<<">chr"<<(i+1)<<'\t'<<"LN:"<<seq.size()<<'\t'<<info<<endl;
-		output<<seq<<endl;
-	}
-	output.close();
 };

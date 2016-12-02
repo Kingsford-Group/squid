@@ -77,7 +77,7 @@ public:
     int DFS(int node, int curlabelid, vector<int>& Label);
     void ConnectedComponent(int & maxcomponentsize);
     void ConnectedComponent();
-    void OutputConnectedComponent(string outputfile);
+    void OutputGraph(string outputfile);
 
     vector< vector<int> > Ordering();
     vector<int> MincutRecursion(std::map<int,int> CompNodes, vector<Edge_t> CompEdges);
@@ -85,7 +85,6 @@ public:
 
     void SimplifyComponents(vector< vector<int> >& Components, map<int,int>& NewIndex, vector<Node_t>& NewNodeChr, vector< vector<int> >& LowSupportNode, vector<int>& ReferenceNode, vector<bool>& RelativePosition, int weightcutoff=3);
     void DesimplifyComponents(vector< vector<int> >& Components, map<int,int>& NewIndex, vector< vector<int> >& LowSupportNode, vector<int>& ReferenceNode, vector<bool>& RelativePosition);
-    vector< vector<int> > ReadComponents(string file);
     vector< vector<int> > SortComponents(vector< vector<int> >& Components);
     vector< vector<int> > MergeSingleton(vector< vector<int> >& Components, const vector<int>& RefLength, vector<Node_t>& NewNodeChr, int LenCutOff=500000);
     /*bool MergeSingleton_Insert(int singleton, vector< vector<int> >& NewComponents, int LenCutOff); //return whether inserted or not
@@ -93,8 +92,6 @@ public:
     bool MergeSingleton_Insert(vector<int> SingletonComponent, vector< vector<int> >& NewComponents, vector<Node_t>& NewNodeChr);
     bool MergeSingleton_Insert(vector< vector<int> > Consecutive, vector< vector<int> >& NewComponents, vector<Node_t>& NewNodeChr);
     vector< vector<int> > MergeComponents(vector< vector<int> >& Components, int cutoff=5);
-
-    void OutputNewGenome(vector< vector<int> >& Components, const vector<string>& RefSequence, const vector<string>& RefName, string outputfile);
 };
 
 #endif

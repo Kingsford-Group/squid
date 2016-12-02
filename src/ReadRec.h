@@ -56,7 +56,7 @@ typedef vector<ReadRec_t> SBamrecord_t;
 
 void BuildRefName(string bamfile, vector<string>& RefName, std::map<string,int>& RefTable, vector<int>& RefLength);
 
-void BuildReference(string fafile, const std::map<string,int>& RefTable, vector<int>& RefLength, vector<string>& RefSequence);
+bool BuildRefSeq(string fafile, const std::map<string,int>& RefTable, vector<int>& RefLength, vector<string>& RefSequence);
 
 void UpdateReference(const SegmentGraph_t& SegmentGraph, const vector< vector<int> >& Components, vector<int>& RefLength, vector<string>& RefSequence);
 
