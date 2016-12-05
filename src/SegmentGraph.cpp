@@ -44,12 +44,35 @@ SegmentGraph_t::SegmentGraph_t(string graphfile){
 		}
 		else if(strs[0]=="edge"){
 			Edge_t tmp(stoi(strs[2]), (strs[3]=="H"?true:false), stoi(strs[4]), (strs[5]=="H"?true:false), stoi(strs[6]));
+			vEdges.push_back(tmp);
 		}
 	}
 	input.close();
 	UpdateNodeLink();
 	ConnectedComponent();
 	cout<<vNodes.size()<<'\t'<<vEdges.size()<<endl;
+};
+
+bool SegmentGraph_t::IsDiscordant(int edgeidx){
+	int ind1=vEdges[edgeidx].Ind1, ind2=vEdges[edgeidx].Ind2;
+	if(vNodes[ind1].Chr!=vNodes[ind2].Chr)
+		return true;
+	else if(vNodes[ind2].Position-vNodes[ind1].Position-vNodes[ind1].Length>Concord_Dist_Pos && ind2-ind1>Concord_Dist_Idx)
+		return true;
+	else if(vEdges[edgeidx].Head1!=false || vEdges[edgeidx].Head2!=true)
+		return true;
+	return false;
+};
+
+bool SegmentGraph_t::IsDiscordant(Edge_t* edge){
+	int ind1=edge->Ind1, ind2=edge->Ind2;
+	if(vNodes[ind1].Chr!=vNodes[ind2].Chr)
+		return true;
+	else if(vNodes[ind2].Position-vNodes[ind1].Position-vNodes[ind1].Length>Concord_Dist_Pos && ind2-ind1>Concord_Dist_Idx)
+		return true;
+	else if(edge->Head1!=false || edge->Head2!=true)
+		return true;
+	return false;
 };
 
 void SegmentGraph_t::BuildNode(const vector<int>& RefLength, SBamrecord_t& SBamrecord){

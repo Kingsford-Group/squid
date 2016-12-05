@@ -57,6 +57,10 @@ public:
     SegmentGraph_t(){};
     SegmentGraph_t(const vector<int>& RefLength,SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node);
     SegmentGraph_t(string graphfile);
+
+    bool IsDiscordant(int edgeidx);
+    bool IsDiscordant(Edge_t* edge);
+
     void BuildNode(const vector<int>& RefLength, SBamrecord_t& SBamrecord);
     void BuildEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node);
     void FilterbyWeight();
