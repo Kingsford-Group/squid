@@ -7,7 +7,7 @@ uint16_t ReadLen;
 
 // parameters from user input
 	// read BAM file
-bool Phred_Type = 0; //0 for phred33, 1 for phred64
+bool Phred_Type = 1; //1 for phred33, 0 for phred64
 uint16_t Max_LowPhred_Len = 10;
 uint8_t Min_Phred = 4;
 uint16_t Min_MapQual = 1;

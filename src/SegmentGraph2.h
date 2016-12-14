@@ -10,6 +10,7 @@
 #include <limits>
 #include <ctime>
 #include <cmath>
+#include <cassert>
 #include <map>
 #include <set>
 #include <boost/algorithm/string.hpp>
