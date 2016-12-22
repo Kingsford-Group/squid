@@ -250,9 +250,9 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, string bamfile){
 			// push back new reads
 			bool recordconcordant=false;
 			bool recordpartalign=false;
-			if(record.IsMapped() && record.IsMateMapped() && record.IsReverseStrand() && !record.IsMateReverseStrand() && record.RefID==record.MateRefID && record.Position>=record.MatePosition && record.Position-record.MatePosition<=750000)
+			if(record.IsMapped() && record.IsMateMapped() && record.IsReverseStrand() && !record.IsMateReverseStrand() && record.RefID==record.MateRefID && record.Position>=record.MatePosition && record.Position-record.MatePosition<=750000 && record.IsProperPair())
 				recordconcordant=true;
-			else if(record.IsMapped() && record.IsMateMapped() && !record.IsReverseStrand() && record.IsMateReverseStrand() && record.RefID==record.MateRefID && record.MatePosition>=record.Position && record.MatePosition-record.Position<=750000)
+			else if(record.IsMapped() && record.IsMateMapped() && !record.IsReverseStrand() && record.IsMateReverseStrand() && record.RefID==record.MateRefID && record.MatePosition>=record.Position && record.MatePosition-record.Position<=750000 && record.IsProperPair())
 				recordconcordant=true;
 			if(recordconcordant){
 				if(readrec.FirstRead.size()!=0 && readrec.FirstRead.front().ReadPos > 15 && !readrec.FirstLowPhred){
