@@ -79,10 +79,12 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, string bamfile){
 	time_t CurrentTime;
 	string CurrentTimeStr;
 	BamReader bamreader; bamreader.Open(bamfile);
+	vector< pair<int, pair<int,int> > > Reads; Reads.reserve(65536);
 	int countreadlen=0;
 	int thresh=3;
 	int prev0CovPos=0;
 	int markedNodeStart=-1, markedNodeChr=-1;
+	int disrightmost=0, otherrightmost=0;
 	// All 3 clusters only record recent reads within one unit of read length
 	vector<SingleBamRec_t> ConcordantCluster; ConcordantCluster.reserve(65536);
 	int offsetConcordantCluster=0;
@@ -114,11 +116,17 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, string bamfile){
 			if(XAtag || IHtagvalue>1 || record.MapQuality==0 || record.IsDuplicate() || !record.IsMapped())
 				continue;
 			ReadRec_t readrec(record);
+			for(vector<SingleBamRec_t>::iterator it=readrec.FirstRead.begin(); it!=readrec.FirstRead.end(); it++)
+				Reads.push_back(make_pair(it->RefID, make_pair(it->RefPos, it->MatchRef)));
+			for(vector<SingleBamRec_t>::iterator it=readrec.SecondMate.begin(); it!=readrec.SecondMate.end(); it++)
+				Reads.push_back(make_pair(it->RefID, make_pair(it->RefPos, it->MatchRef)));
+			if(Reads.size()==Reads.capacity())
+				Reads.reserve(Reads.size()*2);
 
 			if(ConcordantCluster.size()==offsetConcordantCluster && PartialAlignCluster.size()==offsetPartialAlignCluster && DiscordantCluster.size()==offsetDiscordantCluster)
 				prev0CovPos=record.Position;
 			// determine segment if current read doesn't overlap with DiscordantCluster
-			if(DiscordantCluster.size()>offsetDiscordantCluster && (DiscordantCluster.back().RefID!=record.RefID || DiscordantCluster.back().RefPos+DiscordantCluster.back().MatchRef+ReadLen<record.Position)){
+			if(DiscordantCluster.size()>offsetDiscordantCluster && (DiscordantCluster.back().RefID!=record.RefID || disrightmost+ReadLen<record.Position)){
 				int curEndPos=0, curStartPos=(prev0CovPos>markedNodeStart)?prev0CovPos:markedNodeStart;
 				while(DiscordantCluster.size()!=offsetDiscordantCluster){
 					bool isClusternSplit=false;
@@ -211,20 +219,17 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, string bamfile){
 			}
 			// check if  it indicates a 0-coverage position
 			bool is0coverage=true;
-			int currightmost=-1, curChr=0;
+			int currightmost=(disrightmost>otherrightmost)?disrightmost:otherrightmost, curChr=0;
 			for(int i=(int)ConcordantCluster.size()-1; i>=offsetConcordantCluster && (int)ConcordantCluster.size()-i<5; i--){
 				const SingleBamRec_t& it=ConcordantCluster[i];
-				currightmost=(currightmost>it.RefPos+it.MatchRef)?currightmost:(it.RefPos+it.MatchRef);
 				curChr=it.RefID;
 			}
 			for(int i=(int)PartialAlignCluster.size()-1; i>=offsetPartialAlignCluster && (int)PartialAlignCluster.size()-i<5; i--){
 				const SingleBamRec_t& it=PartialAlignCluster[i];
-				currightmost=(currightmost>it.RefPos+it.MatchRef)?currightmost:(it.RefPos+it.MatchRef);
 				curChr=it.RefID;
 			}
 			for(int i=(int)DiscordantCluster.size()-1; i>=offsetDiscordantCluster && (int)DiscordantCluster.size()-i<5; i--){
 				const SingleBamRec_t& it=DiscordantCluster[i];
-				currightmost=(currightmost>it.RefPos+it.MatchRef)?currightmost:(it.RefPos+it.MatchRef);
 				curChr=it.RefID;
 			}
 			is0coverage=(record.RefID!=curChr || record.Position>currightmost+ReadLen);
@@ -255,30 +260,50 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, string bamfile){
 			else if(record.IsMapped() && record.IsMateMapped() && !record.IsReverseStrand() && record.IsMateReverseStrand() && record.RefID==record.MateRefID && record.MatePosition>=record.Position && record.MatePosition-record.Position<=750000 && record.IsProperPair())
 				recordconcordant=true;
 			if(recordconcordant){
+				if((ConcordantCluster.size()!=offsetConcordantCluster || PartialAlignCluster.size()!=offsetPartialAlignCluster) && readrec.FirstRead.size()!=0)
+					otherrightmost=(otherrightmost>readrec.FirstRead.front().RefPos+readrec.FirstRead.front().MatchRef) ? otherrightmost:(readrec.FirstRead.front().RefPos+readrec.FirstRead.front().MatchRef);
+				else if((ConcordantCluster.size()!=offsetConcordantCluster || PartialAlignCluster.size()!=offsetPartialAlignCluster) && readrec.SecondMate.size()!=0)
+					otherrightmost=(disrightmost>readrec.SecondMate.front().RefPos+readrec.SecondMate.front().MatchRef) ? otherrightmost:(readrec.SecondMate.front().RefPos+readrec.SecondMate.front().MatchRef);
+				else if(readrec.FirstRead.size()!=0)
+					otherrightmost=readrec.FirstRead.front().RefPos+readrec.FirstRead.front().MatchRef;
+				else if(readrec.SecondMate.size()!=0)
+					otherrightmost=readrec.SecondMate.front().RefPos+readrec.SecondMate.front().MatchRef;
 				if(readrec.FirstRead.size()!=0 && readrec.FirstRead.front().ReadPos > 15 && !readrec.FirstLowPhred){
-					PartialAlignCluster.insert(PartialAlignCluster.end(), readrec.FirstRead.begin(), readrec.FirstRead.end());
+					PartialAlignCluster.push_back(readrec.FirstRead.front());
 					recordpartalign=true;
 				}
 				else if(readrec.FirstRead.size()!=0 && readrec.FirstTotalLen-readrec.FirstRead.back().ReadPos-readrec.FirstRead.back().MatchRead > 15 && !readrec.FirstLowPhred){
-					PartialAlignCluster.insert(PartialAlignCluster.end(), readrec.FirstRead.begin(), readrec.FirstRead.end());
+					PartialAlignCluster.push_back(readrec.FirstRead.front());
 					recordpartalign=true;
 				}
 				if(readrec.SecondMate.size()!=0 && readrec.SecondMate.front().ReadPos > 15 && !readrec.SecondLowPhred){
-					PartialAlignCluster.insert(PartialAlignCluster.end(), readrec.SecondMate.begin(), readrec.SecondMate.end());
+					PartialAlignCluster.push_back(readrec.SecondMate.front());
 					recordpartalign=true;
 				}
 				else if(readrec.SecondMate.size()!=0 && readrec.SecondTotalLen-readrec.SecondMate.back().ReadPos-readrec.SecondMate.back().MatchRead > 15 && !readrec.SecondLowPhred){
-					PartialAlignCluster.insert(PartialAlignCluster.end(), readrec.SecondMate.begin(), readrec.SecondMate.end());
+					PartialAlignCluster.push_back(readrec.SecondMate.front());
 					recordpartalign=true;
 				}
 				if(!recordpartalign){
-					ConcordantCluster.insert(ConcordantCluster.end(), readrec.FirstRead.begin(), readrec.FirstRead.end());
-					ConcordantCluster.insert(ConcordantCluster.end(), readrec.SecondMate.begin(), readrec.SecondMate.end());
+					if(readrec.FirstRead.size()!=0)
+						ConcordantCluster.push_back(readrec.FirstRead.front());
+					else
+						ConcordantCluster.push_back(readrec.SecondMate.front());
 				}
 			}
 			else{
-				DiscordantCluster.insert(DiscordantCluster.end(), readrec.FirstRead.begin(), readrec.FirstRead.end());
-				DiscordantCluster.insert(DiscordantCluster.end(), readrec.SecondMate.begin(), readrec.SecondMate.end());
+				if(DiscordantCluster.size()!=0 && readrec.FirstRead.size()!=0)
+					disrightmost=(disrightmost>readrec.FirstRead.front().RefPos+readrec.FirstRead.front().MatchRef) ? disrightmost:(readrec.FirstRead.front().RefPos+readrec.FirstRead.front().MatchRef);
+				else if(DiscordantCluster.size()!=0 && readrec.SecondMate.size()!=0)
+					disrightmost=(disrightmost>readrec.SecondMate.front().RefPos+readrec.SecondMate.front().MatchRef) ? disrightmost:(readrec.SecondMate.front().RefPos+readrec.SecondMate.front().MatchRef);
+				else if(readrec.FirstRead.size()!=0)
+					disrightmost=readrec.FirstRead.front().RefPos+readrec.FirstRead.front().MatchRef;
+				else if(readrec.SecondMate.size()!=0)
+					disrightmost=readrec.SecondMate.front().RefPos+readrec.SecondMate.front().MatchRef;
+				if(readrec.FirstRead.size()!=0)
+					DiscordantCluster.push_back(readrec.FirstRead.front());
+				else
+					DiscordantCluster.push_back(readrec.SecondMate.front());
 			}
 			if(ConcordantCluster.size()==ConcordantCluster.capacity()){
 				vector<SingleBamRec_t> tmpConcordantCluster; tmpConcordantCluster.reserve(65536);
@@ -309,6 +334,7 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, string bamfile){
 		}
 		bamreader.Close();
 	}
+	Reads.reserve(Reads.size());
 	time(&CurrentTime);
 	CurrentTimeStr=ctime(&CurrentTime);
 	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Building nodes, finish seeding."<<endl;
@@ -371,50 +397,27 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, string bamfile){
 	CurrentTimeStr=ctime(&CurrentTime);
 	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Building nodes, finish expanding to whole genome."<<endl;
 	// calculate read count for each node
-	bamreader.Open(bamfile);
-	if(bamreader.IsOpen()){
-		BamAlignment record;
-		bool flag=bamreader.GetNextAlignment(record);
+	if(Reads.size()!=0){
+		vector< pair<int, pair<int,int> > >::iterator it=Reads.begin();
 		for(int i=0; i<vNodes.size(); i++){
 			int covcount=0, covsumlen=0;
-			while(flag){
-				bool XAtag=record.HasTag("XA");
-				bool IHtag=record.HasTag("IH");
-				int IHtagvalue=0;
-				if(IHtag)
-					record.GetTag("IH", IHtagvalue);
-				if(XAtag || IHtagvalue>1 || record.IsDuplicate() || record.MapQuality==0 || !record.IsMapped()){
-					flag=bamreader.GetNextAlignment(record);
-					continue;
-				}
-				ReadRec_t readrec(record);
-				bool increasenode=false;
-				if(record.IsFirstMate()){
-					for(vector<SingleBamRec_t>::iterator it=readrec.FirstRead.begin(); it!=readrec.FirstRead.end(); it++){
-						if(it->RefID==vNodes[i].Chr && it->RefPos>=vNodes[i].Position && it->RefPos+it->MatchRef<=vNodes[i].Position+vNodes[i].Length){
-							covcount++; covsumlen+=it->MatchRef;
-						}
-						else if(it->RefPos>=vNodes[i].Position+vNodes[i].Length || it->RefID!=vNodes[i].Chr)
-							increasenode=true;
+			bool increasenode=false;
+			while(!increasenode && it!=Reads.end()){
+				for(; it!=Reads.end(); it++){
+					if(it->first==vNodes[i].Chr && (it->second).first>=vNodes[i].Position && (it->second).first+(it->second).second<=vNodes[i].Position+vNodes[i].Length){
+						covcount++; covsumlen+=(it->second).second;
+					}
+					else if((it->second).first>=vNodes[i].Position+vNodes[i].Length || it->first!=vNodes[i].Chr){
+						increasenode=true;
+						break;
 					}
 				}
-				else{
-					for(vector<SingleBamRec_t>::iterator it=readrec.SecondMate.begin(); it!=readrec.SecondMate.end(); it++){
-						if(it->RefID==vNodes[i].Chr && it->RefPos>=vNodes[i].Position && it->RefPos+it->MatchRef<=vNodes[i].Position+vNodes[i].Length){
-							covcount++; covsumlen+=it->MatchRef;
-						}
-						else if(it->RefPos>=vNodes[i].Position+vNodes[i].Length || it->RefID!=vNodes[i].Chr)
-							increasenode=true;
-					}
-				}
-				flag=bamreader.GetNextAlignment(record);
 				if(increasenode)
 					break;
 			}
 			vNodes[i].Support=covcount;
 			vNodes[i].AvgDepth=1.0*covsumlen/vNodes[i].Length;
 		}
-		bamreader.Close();
 		time(&CurrentTime);
 		CurrentTimeStr=ctime(&CurrentTime);
 		cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Finish calculating reads per node."<<endl;
@@ -1354,7 +1357,7 @@ vector< vector<int> > SegmentGraph_t::Ordering(){
 			BestOrders[i].push_back(CompNodes.begin()->first+1);
 			continue;
 		}
-		cout<<"component "<<i<<endl;
+		//cout<<"component "<<i<<endl;
 		BestOrders[i]=MincutRecursion(CompNodes, CompEdges);
 	}
 	return BestOrders;

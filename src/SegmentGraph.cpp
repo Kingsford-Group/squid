@@ -333,6 +333,9 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, SBamrecord_t& SBamr
 		vNodes[i].Support=count;
 		vNodes[i].AvgDepth=1.0*sumlen/vNodes[i].Length;
 	}
+	time(&CurrentTime);
+	CurrentTimeStr=ctime(&CurrentTime);
+	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Finish calculating reads per node."<<endl;
 };
 
 vector<int> SegmentGraph_t::LocateRead(int initialguess, ReadRec_t& ReadRec){
@@ -714,6 +717,9 @@ void SegmentGraph_t::ChimericEdges(SBamrecord_t& SBamrecord, vector< vector<Edge
 };
 
 void SegmentGraph_t::BuildEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node){
+	time_t CurrentTime;
+	string CurrentTimeStr;
+
 	vector<Edge_t> tmpEdges; tmpEdges.reserve(vEdges.size());
 	RawEdges(SBamrecord, Read_Node);
 	sort(vEdges.begin(), vEdges.end());
@@ -727,6 +733,10 @@ void SegmentGraph_t::BuildEdges(SBamrecord_t& SBamrecord, vector< vector<int> >&
 	vEdges=tmpEdges;
 	UpdateNodeLink();
 	tmpEdges.clear();
+
+	time(&CurrentTime);
+	CurrentTimeStr=ctime(&CurrentTime);
+	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Finish building edges"<<endl;
 };
 
 void SegmentGraph_t::FilterbyWeight(){
