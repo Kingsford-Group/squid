@@ -70,12 +70,12 @@ public:
     vector<int> LocateRead(vector<int>& singleRead_Node, ReadRec_t& ReadRec);
 
     void RawEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node);
-    void ChimericEdges(SBamrecord_t& SBamrecord, vector< vector<Edge_t> >& DiscordantEdges, vector< vector<int> >& Read_Node, vector<int>& BamIndex);
     
     void FilterEdges();
     void UpdateNodeLink();
     void CompressNode();
     void CompressNode(vector< vector<int> >& Read_Node);
+    void FurtherCompressNode();
     void OutputDegree(string outputfile);
 
     int DFS(int node, int curlabelid, vector<int>& Label);

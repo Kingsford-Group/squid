@@ -26,6 +26,7 @@ SegmentGraph_t::SegmentGraph_t(const vector<int>& RefLength, string bamfile){
 	FilterbyInterleaving();
 	FilterEdges();
 	CompressNode();
+	FurtherCompressNode();
 	ConnectedComponent();
 	cout<<vNodes.size()<<'\t'<<vEdges.size()<<endl;
 };
@@ -1209,6 +1210,207 @@ void SegmentGraph_t::CompressNode(vector< vector<int> >& Read_Node){
 			else // lower bound is larger only when all number in LinkedNode are larger than Read_Node[i][j], and the first element is returned
 				Read_Node[i][j]=LinkedOld_New[(*lb)]-1;
 		}
+};
+
+void SegmentGraph_t::FurtherCompressNode(){
+	vector<int> MergeNode(vNodes.size(), -1);
+	int curNode=0;
+	int rightmost=0;
+	for(int i=0; i<MergeNode.size(); i++){
+		int minDisInd2;
+		vector<Edge_t> thisDiscordantEdges, tmpDiscordantEdges;
+		if(i!=0 && vNodes[i].Chr!=vNodes[i-1].Chr && curNode==MergeNode[i-1])
+			curNode++;
+		for(vector<Edge_t*>::iterator itedge=vNodes[i].HeadEdges.begin(); itedge!=vNodes[i].HeadEdges.end(); itedge++){
+			if(IsDiscordant(*itedge))
+				thisDiscordantEdges.push_back(**itedge);
+			else
+				rightmost=(rightmost>max((*itedge)->Ind1, (*itedge)->Ind2))?rightmost:max((*itedge)->Ind1, (*itedge)->Ind2);
+		}
+		for(vector<Edge_t*>::iterator itedge=vNodes[i].TailEdges.begin(); itedge!=vNodes[i].TailEdges.end(); itedge++){
+			if(IsDiscordant(*itedge))
+				thisDiscordantEdges.push_back(**itedge);
+			else
+				rightmost=(rightmost>max((*itedge)->Ind1, (*itedge)->Ind2))?rightmost:max((*itedge)->Ind1, (*itedge)->Ind2);
+		}
+		if(thisDiscordantEdges.size()!=0){ // remove discordant edges that are in the same group
+			minDisInd2 = (thisDiscordantEdges[0].Ind1==i)?thisDiscordantEdges[0].Ind2:(i+20);
+			tmpDiscordantEdges.push_back(thisDiscordantEdges[0]);
+			for(int k=0; k+1<thisDiscordantEdges.size(); k++){
+				const Edge_t& edge1= thisDiscordantEdges[k];
+				const Edge_t& edge2= thisDiscordantEdges[k+1];
+				bool samegroup = ((edge1.Ind1==i && edge2.Ind1==i) || (edge1.Ind2==i && edge2.Ind2==i));
+				if(!(abs(edge1.Ind1-edge2.Ind1)<=Concord_Dist_Idx && abs(edge1.Ind2-edge2.Ind2)<=Concord_Dist_Idx && edge1.Head1==edge2.Head1 && edge1.Head2==edge2.Head2))
+					samegroup=false;
+				if(!samegroup)
+					tmpDiscordantEdges.push_back(thisDiscordantEdges[k+1]);
+				int tmpmin = (edge2.Ind1==i)?edge2.Ind2:(i+20);
+				if(tmpmin<minDisInd2)
+					minDisInd2=tmpmin;
+			}
+			thisDiscordantEdges=tmpDiscordantEdges;
+		}
+
+		if(MergeNode[i]==-1){
+			if(thisDiscordantEdges.size()==0 && i<rightmost) // node with only concordant edges, and further connect right nodes
+				MergeNode[i]=curNode;
+			else if(thisDiscordantEdges.size()==0 && i==rightmost){ // node with only concordant edges, and doesn't connect right nodes
+				MergeNode[i]=curNode;
+				curNode++;
+				rightmost++;
+			}
+			else{ // first node with discordant in its equivalent group
+				if(i!=0 && curNode==MergeNode[i-1])
+					curNode++;
+				vector<Edge_t> nextDiscordantEdges;
+				int j=i+1;
+				for(; j<MergeNode.size() && j<i+20 && j<minDisInd2; j++){ // find the first right nodes with discordant edges, possibly in the equivalent group
+					for(vector<Edge_t*>::iterator itedge=vNodes[j].HeadEdges.begin(); itedge!=vNodes[j].HeadEdges.end(); itedge++)
+						if(IsDiscordant(*itedge))
+							nextDiscordantEdges.push_back(**itedge);
+					for(vector<Edge_t*>::iterator itedge=vNodes[j].TailEdges.begin(); itedge!=vNodes[j].TailEdges.end(); itedge++)
+						if(IsDiscordant(*itedge))
+							nextDiscordantEdges.push_back(**itedge);
+					if(nextDiscordantEdges.size()!=0)
+						break;
+				}
+				bool equivalent = (nextDiscordantEdges.size()!=0); // check whether indeed in the same equivalent group
+				if(nextDiscordantEdges.size()!=0){
+					tmpDiscordantEdges.clear();
+					tmpDiscordantEdges.push_back(nextDiscordantEdges[0]);
+					for(int k=0; k+1<nextDiscordantEdges.size(); k++){
+						const Edge_t& edge1=nextDiscordantEdges[k];
+						const Edge_t& edge2=nextDiscordantEdges[k+1];
+						bool samegroup = ((edge1.Ind1==j && edge2.Ind1==j) || (edge1.Ind2==j && edge2.Ind2==j));
+						if(!(abs(edge1.Ind1-edge2.Ind1)<=Concord_Dist_Idx && abs(edge1.Ind2-edge2.Ind2)<=Concord_Dist_Idx && edge1.Head1==edge2.Head1 && edge1.Head2==edge2.Head2))
+							samegroup=false;
+						if(!samegroup)
+							tmpDiscordantEdges.push_back(nextDiscordantEdges[k+1]);
+					}
+					nextDiscordantEdges=tmpDiscordantEdges;
+					tmpDiscordantEdges.clear();
+					vector<bool> thisEQ(thisDiscordantEdges.size(), false);
+					vector<bool> nextEQ(nextDiscordantEdges.size(), false);
+					for(int k=0; k<thisDiscordantEdges.size(); k++)
+						for(int l=0; l<nextDiscordantEdges.size(); l++){
+							const Edge_t& edge1=thisDiscordantEdges[k];
+							const Edge_t& edge2=nextDiscordantEdges[l];
+							if(edge1.Ind2>edge2.Ind1 && edge2.Ind2>edge1.Ind1 && abs(edge1.Ind1-edge2.Ind1)<=Concord_Dist_Idx && abs(edge1.Ind2-edge2.Ind2)<=Concord_Dist_Idx && edge1.Head1==edge2.Head1 && edge1.Head2==edge2.Head2){
+								thisEQ[k]=true;
+								nextEQ[l]=true;
+							}
+						}
+					for(int k=0; k<thisEQ.size(); k++)
+						if(!thisEQ[k])
+							equivalent=false;
+					for(int l=0; l<nextEQ.size(); l++)
+						if(!nextEQ[l])
+							equivalent=false;
+				}
+				if(!equivalent){ // equivalend group has only the current item
+					MergeNode[i]=curNode;
+					curNode++;
+				}
+				else{ // equivalent group has other items than current item
+					for(int k=i; k<=j; k++)
+						MergeNode[k]=curNode;
+				}
+				rightmost=i+1;
+			}
+		}
+		else if(thisDiscordantEdges.size()!=0){ // later nodes with discordant edges in its equivalent group
+			vector<Edge_t> nextDiscordantEdges;
+			int j=i+1;
+			for(; j<MergeNode.size() && j<i+20 && j<minDisInd2; j++){
+				for(vector<Edge_t*>::iterator itedge=vNodes[j].HeadEdges.begin(); itedge!=vNodes[j].HeadEdges.end(); itedge++)
+					if(IsDiscordant(*itedge))
+						nextDiscordantEdges.push_back(**itedge);
+				for(vector<Edge_t*>::iterator itedge=vNodes[j].TailEdges.begin(); itedge!=vNodes[j].TailEdges.end(); itedge++)
+					if(IsDiscordant(*itedge))
+						nextDiscordantEdges.push_back(**itedge);
+				if(nextDiscordantEdges.size()!=0)
+					break;
+			}
+			bool equivalent = (nextDiscordantEdges.size()!=0);
+			if(nextDiscordantEdges.size()!=0){
+				tmpDiscordantEdges.clear();
+				tmpDiscordantEdges.push_back(thisDiscordantEdges[0]);
+				for(int k=0; k+1<thisDiscordantEdges.size(); k++){
+					const Edge_t& edge1= thisDiscordantEdges[k];
+					const Edge_t& edge2= thisDiscordantEdges[k+1];
+					if(!(abs(edge1.Ind1-edge2.Ind1)<=Concord_Dist_Idx && abs(edge1.Ind2-edge2.Ind2)<=Concord_Dist_Idx && edge1.Head1==edge2.Head1 && edge1.Head2==edge2.Head2))
+						tmpDiscordantEdges.push_back(thisDiscordantEdges[k+1]);
+				}
+				thisDiscordantEdges=tmpDiscordantEdges;
+				tmpDiscordantEdges.clear();
+				tmpDiscordantEdges.push_back(nextDiscordantEdges[0]);
+				for(int k=0; k+1<nextDiscordantEdges.size(); k++){
+					const Edge_t& edge1=nextDiscordantEdges[k];
+					const Edge_t& edge2=nextDiscordantEdges[k+1];
+					if(!(abs(edge1.Ind1-edge2.Ind1)<=Concord_Dist_Idx && abs(edge1.Ind2-edge2.Ind2)<=Concord_Dist_Idx && edge1.Head1==edge2.Head1 && edge1.Head2==edge2.Head2))
+						tmpDiscordantEdges.push_back(nextDiscordantEdges[k+1]);
+				}
+				nextDiscordantEdges=tmpDiscordantEdges;
+				tmpDiscordantEdges.clear();
+				vector<bool> thisEQ(thisDiscordantEdges.size(), false);
+				vector<bool> nextEQ(nextDiscordantEdges.size(), false);
+				for(int k=0; k<thisDiscordantEdges.size(); k++)
+					for(int l=0; l<nextDiscordantEdges.size(); l++){
+						const Edge_t& edge1=thisDiscordantEdges[k];
+						const Edge_t& edge2=nextDiscordantEdges[l];
+						if(edge1.Ind2>edge2.Ind1 && edge2.Ind2>edge1.Ind1 && abs(edge1.Ind1-edge2.Ind1)<=Concord_Dist_Idx && abs(edge1.Ind2-edge2.Ind2)<=Concord_Dist_Idx && edge1.Head1==edge2.Head1 && edge1.Head2==edge2.Head2){
+							thisEQ[k]=true;
+							nextEQ[l]=true;
+						}
+					}
+				for(int k=0; k<thisEQ.size(); k++)
+					if(!thisEQ[k])
+						equivalent=false;
+				for(int l=0; l<nextEQ.size(); l++)
+					if(!nextEQ[l])
+						equivalent=false;
+			}
+			if(!equivalent) // not able to find the next one with discordant edges in the same equivalent group
+				curNode++;
+			else{
+				for(int k=i; k<=j; k++)
+					MergeNode[k]=curNode;
+			}
+			rightmost=i+1;
+		}
+	}
+
+	for(int i=0; i+1<MergeNode.size(); i++)
+		assert((MergeNode[i]==MergeNode[i+1]) || (MergeNode[i]+1==MergeNode[i+1]));
+
+	vector<Node_t> newvNodes; newvNodes.reserve(curNode);
+	vector<Edge_t> newvEdges; newvEdges.reserve(vEdges.size());
+	int ind=0;
+	while(ind<MergeNode.size()){
+		int j=ind;
+		for(; j<MergeNode.size() && MergeNode[j]==MergeNode[ind]; j++){}
+		Node_t tmpnode(vNodes[ind].Chr, vNodes[ind].Position, vNodes[j-1].Position+vNodes[j-1].Length-vNodes[ind].Position);
+		newvNodes.push_back(tmpnode);
+		ind=j;
+	}
+	for(int i=0; i<vEdges.size(); i++){
+		const Edge_t& edge=vEdges[i];
+		if(MergeNode[edge.Ind1]!=MergeNode[edge.Ind2]){
+			Edge_t tmpedge(MergeNode[edge.Ind1], edge.Head1, MergeNode[edge.Ind2], edge.Head2, edge.Weight);
+			newvEdges.push_back(tmpedge);
+		}
+	}
+
+	vNodes=newvNodes;
+	vEdges.clear();
+	sort(newvEdges.begin(), newvEdges.end());
+	for(int i=0; i<newvEdges.size(); i++){
+		if(vEdges.size()==0 || !(newvEdges[i]==vEdges.back()))
+			vEdges.push_back(newvEdges[i]);
+		else
+			vEdges.back().Weight+=newvEdges[i].Weight;
+	}
+	UpdateNodeLink();
 };
 
 void SegmentGraph_t::UpdateNodeLink(){

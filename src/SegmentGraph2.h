@@ -4,7 +4,6 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
-#include <list>
 #include <algorithm>
 #include <string>
 #include <limits>
@@ -77,6 +76,7 @@ public:
     void UpdateNodeLink();
     void CompressNode();
     void CompressNode(vector< vector<int> >& Read_Node);
+    void FurtherCompressNode();
     void OutputDegree(string outputfile);
 
     int DFS(int node, int curlabelid, vector<int>& Label);
