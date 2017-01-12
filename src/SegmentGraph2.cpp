@@ -238,7 +238,7 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, string bamfile){
 			}
 			is0coverage=(record.RefID!=curChr || record.Position>currightmost+ReadLen);
 			if(is0coverage && markedNodeStart!=-1){
-				if(currightmost>markedNodeStart && currightmost-markedNodeStart<thresh*20 && markedNodeStart==vNodes.back().Position+vNodes.back().Length){
+				if(currightmost>markedNodeStart && currightmost-markedNodeStart<thresh*20 && vNodes.size()>0 && markedNodeStart==vNodes.back().Position+vNodes.back().Length){
 					vNodes.back().Length+=currightmost-markedNodeStart;
 				}
 				else if(currightmost>markedNodeStart && currightmost-markedNodeStart>=thresh*20){
