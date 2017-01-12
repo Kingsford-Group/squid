@@ -44,15 +44,8 @@ int main(int argc, char* argv[]){
 		if(Print_Components_Ordering)
 			WriteComponents(Output_Prefix+"_component_pri.txt", Components);
 
-		map<int,int> NewIndex;
-		vector<Node_t> NewNodeChr;
-		vector< vector<int> > LowSupportNode;
-		vector<int> ReferenceNode;
-		vector<bool> RelativePosition;
-		SegmentGraph.SimplifyComponents(Components, NewIndex, NewNodeChr, LowSupportNode, ReferenceNode, RelativePosition);
 		Components=SegmentGraph.SortComponents(Components);
-		Components=SegmentGraph.MergeSingleton(Components, RefLength, NewNodeChr);
-		SegmentGraph.DesimplifyComponents(Components, NewIndex, LowSupportNode, ReferenceNode, RelativePosition);
+		Components=SegmentGraph.MergeSingleton(Components, RefLength);
 		Components=SegmentGraph.SortComponents(Components);
 		Components=SegmentGraph.MergeComponents(Components);
 

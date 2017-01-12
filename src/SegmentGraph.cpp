@@ -703,7 +703,7 @@ void SegmentGraph_t::FilterbyInterleaving(){
 				if(vEdges[j].Ind1<=vEdges[i].Ind1 && vEdges[j].Head1)
 					Anch1Head.push_back(vEdges[j].Ind2);
 				else if(vEdges[j].Ind1>=vEdges[i].Ind1 && !vEdges[j].Head1)
-					Anch1Tail.push_back(vEdges[i].Ind2);
+					Anch1Tail.push_back(vEdges[j].Ind2);
 				if(vEdges[j].Ind2<=vEdges[i].Ind2 && vEdges[j].Head2)
 					Anch2Head.push_back(vEdges[j].Ind1);
 				else if(vEdges[j].Ind2>=vEdges[i].Ind2 && !vEdges[j].Head2)
@@ -1622,165 +1622,6 @@ void SegmentGraph_t::GenerateILP(std::map<int,int>& CompNodes, vector<Edge_t>& C
 	}
 };
 
-void SegmentGraph_t::SimplifyComponents(vector< vector<int> >& Components, map<int,int>& NewIndex, vector<Node_t>& NewNodeChr, vector< vector<int> >& LowSupportNode, vector<int>& ReferenceNode, vector<bool>& RelativePosition, int weightcutoff){
-	clock_t starttime=clock();
-	double duration;
-	typedef tuple< vector<int>, int, bool> Subsitution_t;
-	vector<Subsitution_t> vSubstitution;
-	vector< vector<int> > NewComponents;
-	NewNodeChr.clear(); NewIndex.clear(); LowSupportNode.clear(); RelativePosition.clear(); ReferenceNode.clear();
-	map<int, int> InvNewIndex;
-	for(int i=0; i<Components.size(); i++){
-		if(i%10000==0){
-			duration=1.0*(clock()-starttime)/CLOCKS_PER_SEC;
-			cout<<"SimplifyComponents "<<i<<'\t'<<"used time "<<duration<<endl;
-		}
-		vector<int> ToDelete;
-		if(Components[i].size()!=1){
-			for(int j=0; j<Components[i].size(); j++){
-				if(vNodes[abs(Components[i][j])-1].Support<=weightcutoff){
-					vector<int> tmp;
-					int k=j;
-					for(; k<Components[i].size() && vNodes[abs(Components[i][k])-1].Support<=weightcutoff; k++){
-						tmp.push_back(Components[i][k]);
-						ToDelete.push_back(k);
-					}
-					if(j!=0){
-						if(Components[i][j-1]>0)
-							vSubstitution.push_back(make_tuple(tmp, Components[i][j-1], false)); //after Components[i][j-1]
-						else{
-							vector<int> tmp2;
-							for(int l=0; l<tmp.size(); l++)
-								tmp2.push_back(-tmp[tmp.size()-1-l]);
-							vSubstitution.push_back(make_tuple(tmp2, -Components[i][j-1], true)); // before -Components[i][j-1]
-						}
-					}
-					else if(k!=Components[i].size()){
-						if(Components[i][k]>0)
-							vSubstitution.push_back(make_tuple(tmp, Components[i][k], true)); // before Components[i][k]
-						else{
-							vector<int> tmp2;
-							for(int l=0; l<tmp.size(); l++)
-								tmp2.push_back(-tmp[tmp.size()-1-l]);
-							vSubstitution.push_back(make_tuple(tmp2, -Components[i][k], false)); // after -Components[i][k]
-						}
-					}
-					else{ // whole components are all low support nodes, keep the last element in Components
-						if(tmp.back()>0){
-							tmp.erase(tmp.end()-1);
-							vSubstitution.push_back(make_tuple(tmp, Components[i].back(), true));
-						}
-						else{
-							tmp.erase(tmp.end()-1);
-							vector<int> tmp2;
-							for(int l=0; l<tmp.size(); l++)
-								tmp2.push_back(-tmp[tmp.size()-1-l]);
-							vSubstitution.push_back(make_tuple(tmp2, -Components[i].back(), false));
-						}
-					}
-					j=k;
-				}
-			}
-		}
-		vector<int> tmpNewComponents;
-		if(Components[i].size()==1)
-			tmpNewComponents.push_back(Components[i].back());
-		else if(ToDelete.size()==Components[i].size())
-			tmpNewComponents.push_back(Components[i].back());
-		else{
-			int k=0;
-			for(int j=0; j<Components[i].size(); j++){
-				for(; k<ToDelete.size() && ToDelete[k]<j; k++){}
-				if((k<ToDelete.size() && j<ToDelete[k]) || k>=ToDelete.size()){
-					tmpNewComponents.push_back(Components[i][j]);
-				}
-			}
-		}
-		NewComponents.push_back(tmpNewComponents);
-	}
-	Components=NewComponents; NewComponents.clear();
-	sort(vSubstitution.begin(), vSubstitution.end(), [](Subsitution_t a, Subsitution_t b){return get<1>(a)<get<1>(b);});
-	for(int i=0; i<vSubstitution.size(); i++){
-		LowSupportNode.push_back(get<0>(vSubstitution[i]));
-		ReferenceNode.push_back(get<1>(vSubstitution[i]));
-		RelativePosition.push_back(get<2>(vSubstitution[i]));
-	}
-	// build new index after kicking out elements
-	vector<int> RemainingNodes; RemainingNodes.reserve(vNodes.size());
-	for(int i=0; i<Components.size(); i++)
-		for(int j=0; j<Components[i].size(); j++){
-			RemainingNodes.push_back(abs(Components[i][j]));
-			if(RemainingNodes.back()==0)
-				cout<<"wrong here\n";
-		}
-	sort(RemainingNodes.begin(), RemainingNodes.end());
-	for(int i=0; i<RemainingNodes.size(); i++){
-		NewIndex[i+1]=RemainingNodes[i]; InvNewIndex[RemainingNodes[i]]=i+1;
-		Node_t tmpNode(vNodes[RemainingNodes[i]-1].Chr, vNodes[RemainingNodes[i]-1].Position, vNodes[RemainingNodes[i]-1].Length);
-		NewNodeChr.push_back(tmpNode);
-	}
-	RemainingNodes.clear();
-	for(int i=0; i<Components.size(); i++)
-		for(int j=0; j<Components[i].size(); j++)
-			Components[i][j]=(Components[i][j]>0)?InvNewIndex[Components[i][j]]:(-InvNewIndex[-Components[i][j]]);
-	duration=1.0*(clock()-starttime)/CLOCKS_PER_SEC;
-	cout<<"SimplifyComponents finished"<<"\tused time "<<duration<<endl;
-};
-
-void SegmentGraph_t::DesimplifyComponents(vector< vector<int> >& Components, map<int,int>& NewIndex, vector< vector<int> >& LowSupportNode, vector<int>& ReferenceNode, vector<bool>& RelativePosition){
-	clock_t starttime=clock();
-	double duration;
-	for(int i=0; i<Components.size(); i++){
-		for(int j=0; j<Components[i].size(); j++){
-			if(Components[i][j]>0)
-				Components[i][j]=NewIndex[Components[i][j]];
-			else
-				Components[i][j]=-NewIndex[-Components[i][j]];
-		}
-	}
-	for(int i=0; i<Components.size(); i++){
-		if(i%2000==0){
-			duration=1.0*(clock()-starttime)/CLOCKS_PER_SEC;
-			cout<<"DeSimplifyComponents "<<i<<'\t'<<"used time "<<duration<<endl;
-		}
-		for(int j=0; j<Components[i].size(); j++){
-			bool flag=binary_search(ReferenceNode.begin(), ReferenceNode.end(), abs(Components[i][j]));
-			if(flag){
-				int count=0, insertidx=j, NodeIndex=abs(Components[i][j]);
-				vector<int>::iterator low=lower_bound(ReferenceNode.begin(), ReferenceNode.end(), abs(Components[i][j]));
-				for(; low!=ReferenceNode.end() && abs(*low)==NodeIndex; low++){
-					int idx=distance(ReferenceNode.begin(), low);
-					count+=LowSupportNode[idx].size();
-					if(Components[i][j]>0 && RelativePosition[idx]==true){
-						Components[i].insert(Components[i].begin()+insertidx, LowSupportNode[idx].begin(), LowSupportNode[idx].end()); insertidx+=LowSupportNode[idx].size();
-					}
-					else if(Components[i][j]>0 && RelativePosition[idx]==false)
-						Components[i].insert(Components[i].begin()+insertidx+1, LowSupportNode[idx].begin(), LowSupportNode[idx].end());
-					else if(Components[i][j]<0 && RelativePosition[idx]==true){
-						vector<int> tmp;
-						for(int l=0; l<LowSupportNode[idx].size(); l++)
-							tmp.push_back(-LowSupportNode[idx][LowSupportNode[idx].size()-1-l]);
-						Components[i].insert(Components[i].begin()+insertidx+1, tmp.begin(), tmp.end());
-					}
-					else{
-						vector<int> tmp;
-						for(int l=0; l<LowSupportNode[idx].size(); l++)
-							tmp.push_back(-LowSupportNode[idx][LowSupportNode[idx].size()-1-l]);
-						Components[i].insert(Components[i].begin()+insertidx, tmp.begin(), tmp.end()); insertidx+=LowSupportNode[idx].size();
-					}
-				}
-				j+=count;
-			}
-		}
-	}
-	for(int i=0; i<ReferenceNode.size(); i++){
-		if(ReferenceNode[i]==-1)
-			Components.push_back(LowSupportNode[i]);
-	}
-	duration=1.0*(clock()-starttime)/CLOCKS_PER_SEC;
-	cout<<"DeSimplifyComponents finished"<<"\tused time "<<duration<<endl;
-};
-
 vector< vector<int> > SegmentGraph_t::SortComponents(vector< vector<int> >& Components){
 	std::map<int,int> Median_ID;
 	vector<int> Median(Components.size(), 0);
@@ -1814,17 +1655,17 @@ vector< vector<int> > SegmentGraph_t::SortComponents(vector< vector<int> >& Comp
 	return NewComponents;
 };
 
-vector< vector<int> > SegmentGraph_t::MergeSingleton(vector< vector<int> >& Components, const vector<int>& RefLength, vector<Node_t>& NewNodeChr, int LenCutOff){
+vector< vector<int> > SegmentGraph_t::MergeSingleton(vector< vector<int> >& Components, const vector<int>& RefLength, int LenCutOff){
 	vector< vector<int> > NewComponents, Consecutive; NewComponents.reserve(Components.size());
 	vector<int> SingletonComponent, tmp;
 	for(int i=0; i<Components.size(); i++)
 		if(Components[i].size()!=1){
 			bool isconsecutive=true;
 			for(int j=0; j<Components[i].size()-1; j++)
-				if(Components[i][j+1]-Components[i][j]!=1 || NewNodeChr[abs(Components[i][j+1])-1].Chr!=NewNodeChr[abs(Components[i][j])-1].Chr){
+				if(Components[i][j+1]-Components[i][j]!=1 || vNodes[abs(Components[i][j+1])-1].Chr!=vNodes[abs(Components[i][j])-1].Chr){
 					isconsecutive=false; break;
 				}
-			if(isconsecutive && NewNodeChr[abs(Components[i].front())-1].Position==0 && NewNodeChr[abs(Components[i].back())-1].Position+NewNodeChr[abs(Components[i].back())-1].Length==RefLength[NewNodeChr[abs(Components[i].front())-1].Chr])
+			if(isconsecutive && vNodes[abs(Components[i].front())-1].Position==0 && vNodes[abs(Components[i].back())-1].Position+vNodes[abs(Components[i].back())-1].Length==RefLength[vNodes[abs(Components[i].front())-1].Chr])
 				isconsecutive=false;
 			if(!isconsecutive)
 				NewComponents.push_back(Components[i]);
@@ -1833,17 +1674,17 @@ vector< vector<int> > SegmentGraph_t::MergeSingleton(vector< vector<int> >& Comp
 		}
 	int idxconsecutive=0;
 	for(int i=0; i<Components.size(); i++){
-		if(Components[i].size()==1 && !(NewNodeChr[Components[i][0]-1].Position==0 && NewNodeChr[Components[i][0]-1].Length==RefLength[NewNodeChr[Components[i][0]-1].Chr])){
-			if(tmp.size()==0 || (tmp.back()+1==Components[i][0] && NewNodeChr[tmp.back()-1].Chr==NewNodeChr[abs(Components[i][0])-1].Chr))
+		if(Components[i].size()==1 && !(vNodes[Components[i][0]-1].Position==0 && vNodes[Components[i][0]-1].Length==RefLength[vNodes[Components[i][0]-1].Chr])){
+			if(tmp.size()==0 || (tmp.back()+1==Components[i][0] && vNodes[tmp.back()-1].Chr==vNodes[abs(Components[i][0])-1].Chr))
 				tmp.push_back(abs(Components[i][0]));
 			else if(tmp.size()==1){
 				for(; idxconsecutive<Consecutive.size() && Consecutive[idxconsecutive].back()+1<=tmp[0]; idxconsecutive++)
-					if(Consecutive[idxconsecutive].back()+1>=tmp[0] && NewNodeChr[Consecutive[idxconsecutive][(Consecutive[idxconsecutive].size()-1)/2]-1].Chr==NewNodeChr[tmp[0]-1].Chr)
+					if(Consecutive[idxconsecutive].back()+1>=tmp[0] && vNodes[Consecutive[idxconsecutive][(Consecutive[idxconsecutive].size()-1)/2]-1].Chr==vNodes[tmp[0]-1].Chr)
 						break;
-				int medianidx=(Consecutive[idxconsecutive].size()-1)/2;
-				if(idxconsecutive<Consecutive.size() && tmp[0]==Consecutive[idxconsecutive].front()-1 && NewNodeChr[tmp[0]-1].Chr==NewNodeChr[Consecutive[idxconsecutive][medianidx]-1].Chr)
+				int medianidx=(Consecutive.size()!=0)?(Consecutive[idxconsecutive].size()-1)/2:-1;
+				if(Consecutive.size()!=0 && idxconsecutive<Consecutive.size() && tmp[0]==Consecutive[idxconsecutive].front()-1 && vNodes[tmp[0]-1].Chr==vNodes[Consecutive[idxconsecutive][medianidx]-1].Chr)
 					Consecutive[idxconsecutive].insert(Consecutive[idxconsecutive].begin(), tmp[0]);
-				else if(idxconsecutive<Consecutive.size() && tmp[0]==Consecutive[idxconsecutive].back()+1 && NewNodeChr[tmp[0]-1].Chr==NewNodeChr[Consecutive[idxconsecutive][medianidx]-1].Chr)
+				else if(Consecutive.size()!=0 && idxconsecutive<Consecutive.size() && tmp[0]==Consecutive[idxconsecutive].back()+1 && vNodes[tmp[0]-1].Chr==vNodes[Consecutive[idxconsecutive][medianidx]-1].Chr)
 					Consecutive[idxconsecutive].push_back(tmp[0]);
 				else
 					SingletonComponent.push_back(tmp[0]);
@@ -1851,19 +1692,19 @@ vector< vector<int> > SegmentGraph_t::MergeSingleton(vector< vector<int> >& Comp
 			}
 			else{
 				for(; idxconsecutive<Consecutive.size() && Consecutive[idxconsecutive].back()+1<=tmp[0]; idxconsecutive++)
-					if(Consecutive[idxconsecutive].back()+1>=tmp[0] && NewNodeChr[Consecutive[idxconsecutive][(Consecutive[idxconsecutive].size()-1)/2]-1].Chr==NewNodeChr[tmp[(tmp.size()-1)/2]-1].Chr)
+					if(Consecutive[idxconsecutive].back()+1>=tmp[0] && vNodes[Consecutive[idxconsecutive][(Consecutive[idxconsecutive].size()-1)/2]-1].Chr==vNodes[tmp[(tmp.size()-1)/2]-1].Chr)
 						break;
-				int medianidx=(Consecutive[idxconsecutive].size()-1)/2;
-				if(idxconsecutive<Consecutive.size() && tmp.back()==Consecutive[idxconsecutive].front()-1 && NewNodeChr[tmp[(tmp.size()-1)/2]-1].Chr==NewNodeChr[Consecutive[idxconsecutive][medianidx]-1].Chr)
+				int medianidx=(Consecutive.size()!=0)?(Consecutive[idxconsecutive].size()-1)/2:-1;
+				if(Consecutive.size()!=0 && idxconsecutive<Consecutive.size() && tmp.back()==Consecutive[idxconsecutive].front()-1 && vNodes[tmp[(tmp.size()-1)/2]-1].Chr==vNodes[Consecutive[idxconsecutive][medianidx]-1].Chr)
 					Consecutive[idxconsecutive].insert(Consecutive[idxconsecutive].begin(), tmp.begin(), tmp.end());
-				else if(idxconsecutive<Consecutive.size() && tmp[0]==Consecutive[idxconsecutive].back()+1 && NewNodeChr[tmp[(tmp.size()-1)/2]-1].Chr==NewNodeChr[Consecutive[idxconsecutive][medianidx]-1].Chr)
+				else if(Consecutive.size()!=0 && idxconsecutive<Consecutive.size() && tmp[0]==Consecutive[idxconsecutive].back()+1 && vNodes[tmp[(tmp.size()-1)/2]-1].Chr==vNodes[Consecutive[idxconsecutive][medianidx]-1].Chr)
 					Consecutive[idxconsecutive].insert(Consecutive[idxconsecutive].end(), tmp.begin(), tmp.end());
 				else
 					Consecutive.push_back(tmp);
 				tmp.clear(); tmp.push_back(abs(Components[i][0]));
 			}
 		}
-		else if(Components[i].size()==1 && NewNodeChr[Components[i][0]-1].Position==0 && NewNodeChr[Components[i][0]-1].Length==RefLength[NewNodeChr[Components[i][0]-1].Chr])
+		else if(Components[i].size()==1 && vNodes[Components[i][0]-1].Position==0 && vNodes[Components[i][0]-1].Length==RefLength[vNodes[Components[i][0]-1].Chr])
 			NewComponents.push_back(Components[i]);
 	}
 	if(tmp.size()>1)
@@ -1871,17 +1712,17 @@ vector< vector<int> > SegmentGraph_t::MergeSingleton(vector< vector<int> >& Comp
 	else if(tmp.size()==1)
 		SingletonComponent.push_back(tmp[0]);
 	// insert singleton nodes
-	MergeSingleton_Insert(SingletonComponent, NewComponents, NewNodeChr);
+	MergeSingleton_Insert(SingletonComponent, NewComponents);
 	// push back new consecutive nodes after singleton insertion
 	vector< vector<int> > tmpConsecutive, tmpNewComponents; tmpConsecutive.reserve(Consecutive.size()); tmpNewComponents.reserve(NewComponents.size());
 	idxconsecutive=0;
 	for(int i=0; i<NewComponents.size(); i++){
 		bool isconsecutive=true;
 		for(int j=0; j<NewComponents[i].size()-1; j++)
-			if(NewComponents[i][j+1]-NewComponents[i][j]!=1 || NewNodeChr[abs(NewComponents[i][j+1])-1].Chr!=NewNodeChr[abs(NewComponents[i][j])-1].Chr){
+			if(NewComponents[i][j+1]-NewComponents[i][j]!=1 || vNodes[abs(NewComponents[i][j+1])-1].Chr!=vNodes[abs(NewComponents[i][j])-1].Chr){
 				isconsecutive=false; break;
 			}
-		if(isconsecutive && NewNodeChr[abs(NewComponents[i].front())-1].Position==0 && NewNodeChr[abs(NewComponents[i].back())-1].Position+NewNodeChr[abs(NewComponents[i].back())-1].Length==RefLength[NewNodeChr[abs(NewComponents[i].front())-1].Chr])
+		if(isconsecutive && vNodes[abs(NewComponents[i].front())-1].Position==0 && vNodes[abs(NewComponents[i].back())-1].Position+vNodes[abs(NewComponents[i].back())-1].Length==RefLength[vNodes[abs(NewComponents[i].front())-1].Chr])
 			isconsecutive=false;
 		if(!isconsecutive || NewComponents[i].size()==1)
 			tmpNewComponents.push_back(NewComponents[i]);
@@ -1898,7 +1739,7 @@ vector< vector<int> > SegmentGraph_t::MergeSingleton(vector< vector<int> >& Comp
 	Consecutive=tmpConsecutive; tmpConsecutive.clear();
 	NewComponents=tmpNewComponents; tmpNewComponents.clear();
 	for(int i=0; i<Consecutive.size(); i++){
-		if(tmpConsecutive.size()==0 || tmpConsecutive.back().back()+1!=Consecutive[i].front() || NewNodeChr[abs(tmpConsecutive.back().back())-1].Chr!=NewNodeChr[abs(Consecutive[i].back())-1].Chr)
+		if(tmpConsecutive.size()==0 || tmpConsecutive.back().back()+1!=Consecutive[i].front() || vNodes[abs(tmpConsecutive.back().back())-1].Chr!=vNodes[abs(Consecutive[i].back())-1].Chr)
 			tmpConsecutive.push_back(Consecutive[i]);
 		else
 			tmpConsecutive.back().insert(tmpConsecutive.back().end(), Consecutive[i].begin(), Consecutive[i].end());
@@ -1906,11 +1747,11 @@ vector< vector<int> > SegmentGraph_t::MergeSingleton(vector< vector<int> >& Comp
 	tmpConsecutive.reserve(tmpConsecutive.size());
 	Consecutive=tmpConsecutive; tmpConsecutive.clear();
 	// insert consecutive nodes
-	MergeSingleton_Insert(Consecutive, NewComponents, NewNodeChr);
+	MergeSingleton_Insert(Consecutive, NewComponents);
 	return NewComponents;
 };
 
-bool SegmentGraph_t::MergeSingleton_Insert(vector<int> SingletonComponent, vector< vector<int> >& NewComponents, vector<Node_t>& NewNodeChr){
+bool SegmentGraph_t::MergeSingleton_Insert(vector<int> SingletonComponent, vector< vector<int> >& NewComponents){
 	clock_t starttime=clock();
 	double duration;
 	vector<int> Median(NewComponents.size(), 0);
@@ -1940,12 +1781,12 @@ bool SegmentGraph_t::MergeSingleton_Insert(vector<int> SingletonComponent, vecto
 				int diffsmall=vNodes.size(), difflarge=vNodes.size();
 				bool flagsmall, flaglarge;
 				for(int l=max(0, k-1); l<=k; l++)
-					if(NewNodeChr[abs(NewComponents[j][l])-1].Chr==NewNodeChr[abs(SingletonComponent[i])-1].Chr && abs(NewComponents[j][l])<abs(SingletonComponent[i]) && abs(SingletonComponent[i])-abs(NewComponents[j][l])<diffsmall){
+					if(vNodes[abs(NewComponents[j][l])-1].Chr==vNodes[abs(SingletonComponent[i])-1].Chr && abs(NewComponents[j][l])<abs(SingletonComponent[i]) && abs(SingletonComponent[i])-abs(NewComponents[j][l])<diffsmall){
 						diffsmall=abs(SingletonComponent[i])-abs(NewComponents[j][l]);
 						flagsmall=(NewComponents[j][l]<0);
 					}
 				for(int l=k+1; l<min((int)NewComponents[j].size(), k+3); l++)
-					if(NewNodeChr[abs(NewComponents[j][l])-1].Chr==NewNodeChr[abs(SingletonComponent[i])-1].Chr && abs(NewComponents[j][l])>abs(SingletonComponent[i]) && abs(NewComponents[j][l])-abs(SingletonComponent[i])<difflarge){
+					if(vNodes[abs(NewComponents[j][l])-1].Chr==vNodes[abs(SingletonComponent[i])-1].Chr && abs(NewComponents[j][l])>abs(SingletonComponent[i]) && abs(NewComponents[j][l])-abs(SingletonComponent[i])<difflarge){
 						difflarge=abs(NewComponents[j][l])-abs(SingletonComponent[i]);
 						flaglarge=(NewComponents[j][l]<0);
 					}
@@ -1955,12 +1796,12 @@ bool SegmentGraph_t::MergeSingleton_Insert(vector<int> SingletonComponent, vecto
 				// before large, after small
 				diffsmall=vNodes.size(); difflarge=vNodes.size();
 				for(int l=max(0, k-1); l<=k; l++)
-					if(NewNodeChr[abs(NewComponents[j][l])-1].Chr==NewNodeChr[abs(SingletonComponent[i])-1].Chr && abs(NewComponents[j][l])>abs(SingletonComponent[i]) && abs(NewComponents[j][l])-abs(SingletonComponent[i])<difflarge){
+					if(vNodes[abs(NewComponents[j][l])-1].Chr==vNodes[abs(SingletonComponent[i])-1].Chr && abs(NewComponents[j][l])>abs(SingletonComponent[i]) && abs(NewComponents[j][l])-abs(SingletonComponent[i])<difflarge){
 						difflarge=abs(NewComponents[j][l])-abs(SingletonComponent[i]);
 						flaglarge=(NewComponents[j][l]>0);
 					}
 				for(int l=k+1; l<min((int)NewComponents[j].size(), k+3); l++)
-					if(NewNodeChr[abs(NewComponents[j][l])-1].Chr==NewNodeChr[abs(SingletonComponent[i])-1].Chr && abs(NewComponents[j][l])<abs(SingletonComponent[i]) && abs(SingletonComponent[i])-abs(NewComponents[j][l])<diffsmall){
+					if(vNodes[abs(NewComponents[j][l])-1].Chr==vNodes[abs(SingletonComponent[i])-1].Chr && abs(NewComponents[j][l])<abs(SingletonComponent[i]) && abs(SingletonComponent[i])-abs(NewComponents[j][l])<diffsmall){
 						diffsmall=abs(SingletonComponent[i])-abs(NewComponents[j][l]);
 						flagsmall=(NewComponents[j][l]>0);
 					}
@@ -1969,7 +1810,7 @@ bool SegmentGraph_t::MergeSingleton_Insert(vector<int> SingletonComponent, vecto
 				}
 			}
 			// find closest median
-			if(NewNodeChr[Median[j]-1].Chr==NewNodeChr[SingletonComponent[i]-1].Chr && abs(Median[j]-abs(SingletonComponent[i]))<diffmedian1){
+			if(vNodes[Median[j]-1].Chr==vNodes[SingletonComponent[i]-1].Chr && abs(Median[j]-abs(SingletonComponent[i]))<diffmedian1){
 				for(int k=0; k<NewComponents[j].size(); k++)
 					if(abs(abs(NewComponents[j][k])-abs(SingletonComponent[i]))<abs(diffmedian2)){
 						diffmedian2=abs(NewComponents[j][k])-abs(SingletonComponent[i]); diffmedian1=abs(Median[j]-abs(SingletonComponent[i]));
@@ -2054,7 +1895,7 @@ bool SegmentGraph_t::MergeSingleton_Insert(vector<int> SingletonComponent, vecto
 	return true;
 };
 
-bool SegmentGraph_t::MergeSingleton_Insert(vector< vector<int> > Consecutive, vector< vector<int> >& NewComponents, vector<Node_t>& NewNodeChr){
+bool SegmentGraph_t::MergeSingleton_Insert(vector< vector<int> > Consecutive, vector< vector<int> >& NewComponents){
 	clock_t starttime=clock();
 	double duration;
 	// median of all existing NewComponents
@@ -2095,12 +1936,12 @@ bool SegmentGraph_t::MergeSingleton_Insert(vector< vector<int> > Consecutive, ve
 				int diffsmall=vNodes.size(), difflarge=vNodes.size();
 				bool flagsmall, flaglarge;
 				for(int l=max(0, k-1); l<=k; l++)
-					if(NewNodeChr[abs(NewComponents[j][l])-1].Chr==NewNodeChr[ConsecutiveMedian[i]-1].Chr && abs(NewComponents[j][l])<abs(Consecutive[i][0]) && abs(Consecutive[i][0])-abs(NewComponents[j][l])<diffsmall){
+					if(vNodes[abs(NewComponents[j][l])-1].Chr==vNodes[ConsecutiveMedian[i]-1].Chr && abs(NewComponents[j][l])<abs(Consecutive[i][0]) && abs(Consecutive[i][0])-abs(NewComponents[j][l])<diffsmall){
 						diffsmall=abs(Consecutive[i][0])-abs(NewComponents[j][l]);
 						flagsmall=(NewComponents[j][l]<0);
 					}
 				for(int l=k+1; l<min((int)NewComponents[j].size(), k+3); l++)
-					if(NewNodeChr[abs(NewComponents[j][l])-1].Chr==NewNodeChr[ConsecutiveMedian[i]-1].Chr && abs(NewComponents[j][l])>abs(Consecutive[i].back()) && abs(NewComponents[j][l])-abs(Consecutive[i].back())<difflarge){
+					if(vNodes[abs(NewComponents[j][l])-1].Chr==vNodes[ConsecutiveMedian[i]-1].Chr && abs(NewComponents[j][l])>abs(Consecutive[i].back()) && abs(NewComponents[j][l])-abs(Consecutive[i].back())<difflarge){
 						difflarge=abs(NewComponents[j][l])-abs(Consecutive[i].back());
 						flaglarge=(NewComponents[j][l]<0);
 					}
@@ -2110,12 +1951,12 @@ bool SegmentGraph_t::MergeSingleton_Insert(vector< vector<int> > Consecutive, ve
 				// before large, after small
 				diffsmall=vNodes.size(); difflarge=vNodes.size();
 				for(int l=max(0, k-1); l<=k; l++)
-					if(NewNodeChr[abs(NewComponents[j][l])-1].Chr==NewNodeChr[ConsecutiveMedian[i]-1].Chr && abs(NewComponents[j][l])>abs(Consecutive[i].back()) && abs(NewComponents[j][l])-abs(Consecutive[i].back())<difflarge){
+					if(vNodes[abs(NewComponents[j][l])-1].Chr==vNodes[ConsecutiveMedian[i]-1].Chr && abs(NewComponents[j][l])>abs(Consecutive[i].back()) && abs(NewComponents[j][l])-abs(Consecutive[i].back())<difflarge){
 						difflarge=abs(NewComponents[j][l])-abs(Consecutive[i].back());
 						flaglarge=(NewComponents[j][l]>0);
 					}
 				for(int l=k+1; l<min((int)NewComponents[j].size(), k+3); l++)
-					if(NewNodeChr[abs(NewComponents[j][l])-1].Chr==NewNodeChr[ConsecutiveMedian[i]-1].Chr && abs(NewComponents[j][l])<abs(Consecutive[i][0]) && abs(Consecutive[i][0])-abs(NewComponents[j][l])<diffsmall){
+					if(vNodes[abs(NewComponents[j][l])-1].Chr==vNodes[ConsecutiveMedian[i]-1].Chr && abs(NewComponents[j][l])<abs(Consecutive[i][0]) && abs(Consecutive[i][0])-abs(NewComponents[j][l])<diffsmall){
 						diffsmall=abs(Consecutive[i][0])-abs(NewComponents[j][l]);
 						flagsmall=(NewComponents[j][l]>0);
 					}
@@ -2124,7 +1965,7 @@ bool SegmentGraph_t::MergeSingleton_Insert(vector< vector<int> > Consecutive, ve
 				}
 			}
 			// find closest median
-			if(NewNodeChr[Median[j]-1].Chr==NewNodeChr[ConsecutiveMedian[i]-1].Chr && abs(Median[j]-ConsecutiveMedian[i])<diffmedian1){
+			if(vNodes[Median[j]-1].Chr==vNodes[ConsecutiveMedian[i]-1].Chr && abs(Median[j]-ConsecutiveMedian[i])<diffmedian1){
 				for(int k=0; k<NewComponents[j].size(); k++)
 					if(abs(abs(NewComponents[j][k])-ConsecutiveMedian[i])<abs(diffmedian2)){
 						diffmedian2=abs(NewComponents[j][k])-ConsecutiveMedian[i]; diffmedian1=abs(Median[j]-ConsecutiveMedian[i]);

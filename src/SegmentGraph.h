@@ -87,14 +87,12 @@ public:
     vector<int> MincutRecursion(std::map<int,int> CompNodes, vector<Edge_t> CompEdges);
     void GenerateILP(std::map<int,int>& CompNodes, vector<Edge_t>& CompEdges, GRBEnv& env, GRBModel& model, vector<GRBVar>& vGRBVar);
 
-    void SimplifyComponents(vector< vector<int> >& Components, map<int,int>& NewIndex, vector<Node_t>& NewNodeChr, vector< vector<int> >& LowSupportNode, vector<int>& ReferenceNode, vector<bool>& RelativePosition, int weightcutoff=3);
-    void DesimplifyComponents(vector< vector<int> >& Components, map<int,int>& NewIndex, vector< vector<int> >& LowSupportNode, vector<int>& ReferenceNode, vector<bool>& RelativePosition);
-    vector< vector<int> > SortComponents(vector< vector<int> >& Components);
-    vector< vector<int> > MergeSingleton(vector< vector<int> >& Components, const vector<int>& RefLength, vector<Node_t>& NewNodeChr, int LenCutOff=500000);
+   vector< vector<int> > SortComponents(vector< vector<int> >& Components);
+    vector< vector<int> > MergeSingleton(vector< vector<int> >& Components, const vector<int>& RefLength, int LenCutOff=500000);
     /*bool MergeSingleton_Insert(int singleton, vector< vector<int> >& NewComponents, int LenCutOff); //return whether inserted or not
     bool MergeSingleton_Insert(vector<int> consecutive, vector< vector<int> >& NewComponents, int LenCutOff);*/
-    bool MergeSingleton_Insert(vector<int> SingletonComponent, vector< vector<int> >& NewComponents, vector<Node_t>& NewNodeChr);
-    bool MergeSingleton_Insert(vector< vector<int> > Consecutive, vector< vector<int> >& NewComponents, vector<Node_t>& NewNodeChr);
+    bool MergeSingleton_Insert(vector<int> SingletonComponent, vector< vector<int> >& NewComponents);
+    bool MergeSingleton_Insert(vector< vector<int> > Consecutive, vector< vector<int> >& NewComponents);
     vector< vector<int> > MergeComponents(vector< vector<int> >& Components, int cutoff=5);
 };
 
