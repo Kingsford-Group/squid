@@ -114,7 +114,7 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, string bamfile){
 			int IHtagvalue=0;
 			if(IHtag)
 				record.GetTag("IH", IHtagvalue);
-			if(XAtag || IHtagvalue>1 || record.MapQuality==0 || record.IsDuplicate() || !record.IsMapped())
+			if(XAtag || IHtagvalue>1 || record.MapQuality==0 || record.IsDuplicate() || !record.IsMapped() || record.RefID==-1)
 				continue;
 			ReadRec_t readrec(record);
 			for(vector<SingleBamRec_t>::iterator it=readrec.FirstRead.begin(); it!=readrec.FirstRead.end(); it++)
@@ -259,9 +259,9 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, string bamfile){
 			// push back new reads
 			bool recordconcordant=false;
 			bool recordpartalign=false;
-			if(record.IsMapped() && record.IsMateMapped() && record.IsReverseStrand() && !record.IsMateReverseStrand() && record.RefID==record.MateRefID && record.Position>=record.MatePosition && record.Position-record.MatePosition<=750000 && record.IsProperPair())
+			if(record.IsMapped() && record.IsMateMapped() && record.MateRefID!=-1 && record.IsReverseStrand() && !record.IsMateReverseStrand() && record.RefID==record.MateRefID && record.Position>=record.MatePosition && record.Position-record.MatePosition<=750000 && record.IsProperPair())
 				recordconcordant=true;
-			else if(record.IsMapped() && record.IsMateMapped() && !record.IsReverseStrand() && record.IsMateReverseStrand() && record.RefID==record.MateRefID && record.MatePosition>=record.Position && record.MatePosition-record.Position<=750000 && record.IsProperPair())
+			else if(record.IsMapped() && record.IsMateMapped() && record.MateRefID!=-1 && !record.IsReverseStrand() && record.IsMateReverseStrand() && record.RefID==record.MateRefID && record.MatePosition>=record.Position && record.MatePosition-record.Position<=750000 && record.IsProperPair())
 				recordconcordant=true;
 			if(recordconcordant){
 				if((ConcordantCluster.size()!=offsetConcordantCluster || PartialAlignCluster.size()!=offsetPartialAlignCluster) && readrec.FirstRead.size()!=0)
@@ -658,11 +658,11 @@ void SegmentGraph_t::RawEdges(string bamfile){
 					PartialAlign.push_back(readrec);
 			}
 
-			if(record.IsFirstMate() && record.IsMateMapped()){
+			if(record.IsFirstMate() && record.IsMateMapped() && record.MateRefID!=-1){
 				SingleBamRec_t tmp(record.MateRefID, record.MatePosition, 0, 15, 15, 60, record.IsMateReverseStrand(), false);
 				readrec.SecondMate.push_back(tmp);
 			}
-			else if(!record.IsFirstMate() && record.IsMateMapped()){
+			else if(!record.IsFirstMate() && record.IsMateMapped() && record.MateRefID!=-1){
 				SingleBamRec_t tmp(record.MateRefID, record.MatePosition, 0, 15, 15, 60, record.IsMateReverseStrand(), false);
 				readrec.FirstRead.push_back(tmp);
 			}
@@ -678,6 +678,7 @@ void SegmentGraph_t::RawEdges(string bamfile){
 							for(; i<vNodes.size() && (vNodes[i].Chr<readrec.FirstRead[k].RefID || (vNodes[i].Chr==readrec.FirstRead[k].RefID && vNodes[i].Position+vNodes[i].Length<readrec.FirstRead[k].RefPos)); i++){}
 							for(; i>-1 && (vNodes[i].Chr>readrec.FirstRead[k].RefID || (vNodes[i].Chr==readrec.FirstRead[k].RefID && vNodes[i].Position>readrec.FirstRead[k].RefPos)); i--){}
 							Edge_t tmp(i, false, i+1, true);
+							assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
 							vEdges.push_back(tmp);
 						}
 						else if(k<(int)readrec.FirstRead.size()+(int)readrec.SecondMate.size()){
@@ -685,6 +686,7 @@ void SegmentGraph_t::RawEdges(string bamfile){
 							for(; i<vNodes.size() && (vNodes[i].Chr<readrec.SecondMate[k].RefID || (vNodes[i].Chr==readrec.SecondMate[k].RefID && vNodes[i].Position+vNodes[i].Length<readrec.SecondMate[k].RefPos)); i++){}
 							for(; i>-1 && (vNodes[i].Chr>readrec.SecondMate[k].RefID || (vNodes[i].Chr==readrec.SecondMate[k].RefID && vNodes[i].Position>readrec.SecondMate[k].RefPos)); i--){}
 							Edge_t tmp(i, false, i+1, true);
+							assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
 							vEdges.push_back(tmp);
 							k+=(int)readrec.FirstRead.size();
 						}
@@ -696,6 +698,7 @@ void SegmentGraph_t::RawEdges(string bamfile){
 						if(i!=j && i!=-1 && j!=-1){
 							bool tmpHead1=(readrec.FirstRead[k].IsReverse)?true:false, tmpHead2=(readrec.FirstRead[k+1].IsReverse)?false:true;
 							Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
+							assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
 							vEdges.push_back(tmp);
 						}
 					}
@@ -707,6 +710,7 @@ void SegmentGraph_t::RawEdges(string bamfile){
 						if(i!=j && i!=-1 && j!=-1){
 							bool tmpHead1=(readrec.SecondMate[k].IsReverse)?true:false, tmpHead2=(readrec.SecondMate[k+1].IsReverse)?false:true;
 							Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
+							assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
 							vEdges.push_back(tmp);
 						}
 					}
@@ -725,6 +729,7 @@ void SegmentGraph_t::RawEdges(string bamfile){
 						if(i!=j && i!=-1 && j!=-1 && !isoverlap){
 							bool tmpHead1=(readrec.FirstRead.back().IsReverse)?true:false, tmpHead2=(readrec.SecondMate.back().IsReverse)?true:false;
 							Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
+							assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
 							vEdges.push_back(tmp);
 							if(IsDiscordant(&vEdges.back()))
 								FirstDisInserted.push_back(readrec.Qname);
@@ -749,6 +754,7 @@ void SegmentGraph_t::RawEdges(string bamfile){
 						if(i!=j && i!=-1 && j!=-1 && !isoverlap){
 							bool tmpHead1=(readrec.FirstRead.back().IsReverse)?true:false, tmpHead2=(readrec.SecondMate.back().IsReverse)?true:false;
 							Edge_t tmp(i, tmpHead1, j, tmpHead2, -1);
+							assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
 							if(IsDiscordant(&tmp)){
 								SecondDisMulti.push_back(readrec.Qname);
 								SecondEdges.push_back(tmp);
@@ -795,6 +801,7 @@ void SegmentGraph_t::RawEdges(string bamfile){
 						if(i!=j && i!=-1 && j!=-1){
 							bool tmpHead1=(mergedreadrec.FirstRead[k].IsReverse)?true:false, tmpHead2=(mergedreadrec.FirstRead[k+1].IsReverse)?false:true;
 							Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
+							assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
 							vEdges.push_back(tmp);
 						}
 					}
@@ -806,6 +813,7 @@ void SegmentGraph_t::RawEdges(string bamfile){
 						if(i!=j && i!=-1 && j!=-1){
 							bool tmpHead1=(mergedreadrec.SecondMate[k].IsReverse)?true:false, tmpHead2=(mergedreadrec.SecondMate[k+1].IsReverse)?false:true;
 							Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
+							assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
 							vEdges.push_back(tmp);
 						}
 					}
@@ -818,9 +826,15 @@ void SegmentGraph_t::RawEdges(string bamfile){
 			mergedreadrec.SecondMate.insert(mergedreadrec.SecondMate.end(), it->SecondMate.begin(), it->SecondMate.end());
 		}
 	}
+	time(&CurrentTime);
+	CurrentTimeStr=ctime(&CurrentTime);
+	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Finish adding partial aligned reads."<<endl;
 };
 
 void SegmentGraph_t::BuildEdges(string bamfile){
+	time_t CurrentTime;
+	string CurrentTimeStr;
+
 	vector<Edge_t> tmpEdges; tmpEdges.reserve(vEdges.size());
 	RawEdges(bamfile);
 	sort(vEdges.begin(), vEdges.end());
@@ -842,6 +856,10 @@ void SegmentGraph_t::BuildEdges(string bamfile){
 	vEdges=tmpEdges;
 	UpdateNodeLink();
 	tmpEdges.clear();
+
+	time(&CurrentTime);
+	CurrentTimeStr=ctime(&CurrentTime);
+	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Finish building edges."<<endl;
 };
 
 void SegmentGraph_t::FilterbyWeight(){
