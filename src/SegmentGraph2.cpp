@@ -34,14 +34,32 @@ SegmentGraph_t::SegmentGraph_t(const vector<int>& RefLength, string bamfile){
 SegmentGraph_t::SegmentGraph_t(string graphfile){
 	ifstream input(graphfile);
 	string line;
+	// while(getline(input, line)){
+	// 	if(line[0]=='#')
+	// 		continue;
+	// 	vector<string> strs;
+	// 	boost::split(strs, line, boost::is_any_of("\t"));
+	// 	if(strs[0]=="node"){
+	// 		Node_t tmp(stoi(strs[2]), stoi(strs[3]), stoi(strs[4])-stoi(strs[3]), stoi(strs[5]), stod(strs[6]));
+	// 		vNodes.push_back(tmp);
+	// 	}
+	// 	else if(strs[0]=="edge"){
+	// 		Edge_t tmp(stoi(strs[2]), (strs[3]=="H"?true:false), stoi(strs[4]), (strs[5]=="H"?true:false), stoi(strs[6]));
+	// 		vEdges.push_back(tmp);
+	// 	}
+	// }
 	while(getline(input, line)){
-		if(line[0]=='#')
-			continue;
 		vector<string> strs;
 		boost::split(strs, line, boost::is_any_of("\t"));
-		if(strs[0]=="node"){
-			Node_t tmp(stoi(strs[2]), stoi(strs[3]), stoi(strs[4])-stoi(strs[3]), stoi(strs[5]), stod(strs[6]));
-			vNodes.push_back(tmp);
+		if(line[0]=='#'){
+			if(strs.size()==1){
+				strs[0]=strs[0].substr(1);
+				int numnodes=stoi(strs[0]);
+				for(int i=0; i<numnodes; i++){
+					Node_t tmp;
+					vNodes.push_back(tmp);
+				}
+			}
 		}
 		else if(strs[0]=="edge"){
 			Edge_t tmp(stoi(strs[2]), (strs[3]=="H"?true:false), stoi(strs[4]), (strs[5]=="H"?true:false), stoi(strs[6]));
@@ -131,8 +149,16 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, string bamfile){
 			// determine segment if current read doesn't overlap with DiscordantCluster
 			if(DiscordantCluster.size()>offsetDiscordantCluster && (DiscordantCluster.back().RefID!=record.RefID || disrightmost+ReadLen<record.Position)){
 				int curEndPos=0, curStartPos=(prev0CovPos>markedNodeStart)?prev0CovPos:markedNodeStart;
+				int disStartPos=-1, disEndPos=-1, disCount=-1;
+				bool isClusternSplit=false;
 				while(DiscordantCluster.size()!=offsetDiscordantCluster){
-					bool isClusternSplit=false;
+					if(disStartPos!=-1 && !isClusternSplit && disCount>min(10.0, 4.0*(disEndPos-disStartPos)/ReadLen)){
+						Node_t tmp(DiscordantCluster[offsetDiscordantCluster].RefID, disStartPos, disEndPos-disStartPos);
+						vNodes.push_back(tmp);
+						curStartPos=disEndPos; curEndPos=disEndPos;
+						markedNodeStart=disEndPos; markedNodeChr=tmp.Chr;
+					}
+					isClusternSplit=false;
 					vector<int> MarginPositions;
 					int i;
 					for(i=offsetDiscordantCluster; i<DiscordantCluster.size(); i++){
@@ -145,6 +171,9 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, string bamfile){
 								break;
 						}
 					}
+					disStartPos=max(curStartPos, DiscordantCluster[offsetDiscordantCluster].RefPos);
+					disEndPos=curEndPos;
+					disCount=i-offsetDiscordantCluster;
 					for(i++; i<DiscordantCluster.size() && DiscordantCluster[i].RefPos<curEndPos+thresh; i++){
 						const SingleBamRec_t& it=DiscordantCluster[i];
 						MarginPositions.push_back(it.RefPos); MarginPositions.push_back(it.RefPos+it.MatchRef);
@@ -214,6 +243,12 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, string bamfile){
 					}
 					while(DiscordantCluster.size()>offsetDiscordantCluster && DiscordantCluster[offsetDiscordantCluster].RefPos+DiscordantCluster[offsetDiscordantCluster].MatchRef<=curEndPos)
 						offsetDiscordantCluster++;
+				}
+				if(disStartPos!=-1 && !isClusternSplit && disCount>min(10.0, 4.0*(disEndPos-disStartPos)/ReadLen)){
+					Node_t tmp(DiscordantCluster[0].RefID, disStartPos, disEndPos-disStartPos);
+					vNodes.push_back(tmp);
+					curStartPos=disEndPos; curEndPos=disEndPos;
+					markedNodeStart=disEndPos; markedNodeChr=tmp.Chr;
 				}
 				if(offsetDiscordantCluster==DiscordantCluster.size()){
 					DiscordantCluster.clear(); offsetDiscordantCluster=0;
@@ -874,15 +909,15 @@ void SegmentGraph_t::FilterbyWeight(){
 		vector<Edge_t> nearEdges;
 		nearEdges.push_back(vEdges[i]);
 		for(int j=i-1; j>-1 && vEdges[j].Ind1>=vEdges[i].Ind1-Concord_Dist_Idx && vNodes[vEdges[j].Ind1].Chr==chr1 && vNodes[vEdges[j].Ind1].Position+vNodes[vEdges[j].Ind1].Length>=pos1-Concord_Dist_Pos; j--){
-			int newpos1=(vEdges[j].Head1)? vNodes[vEdges[j].Ind1].Position:(vNodes[vEdges[j].Ind1].Position+vNodes[vEdges[j].Ind1].Length);
-			int newpos2=(vEdges[j].Head2)? vNodes[vEdges[j].Ind2].Position:(vNodes[vEdges[j].Ind2].Position+vNodes[vEdges[j].Ind2].Length);
-			if(vEdges[j].Ind2>vEdges[i].Ind1 && vEdges[i].Head1==vEdges[j].Head1 && vEdges[i].Head2==vEdges[j].Head2 && abs(vEdges[j].Ind2-vEdges[i].Ind2)<=Concord_Dist_Idx && abs(newpos1-pos1)<=Concord_Dist_Pos && abs(newpos2-pos2)<=Concord_Dist_Pos)
+			int newchr1=vNodes[vEdges[j].Ind1].Chr, newpos1=(vEdges[j].Head1)? vNodes[vEdges[j].Ind1].Position:(vNodes[vEdges[j].Ind1].Position+vNodes[vEdges[j].Ind1].Length);
+			int newchr2=vNodes[vEdges[j].Ind2].Chr, newpos2=(vEdges[j].Head2)? vNodes[vEdges[j].Ind2].Position:(vNodes[vEdges[j].Ind2].Position+vNodes[vEdges[j].Ind2].Length);
+			if(vEdges[j].Ind2>vEdges[i].Ind1 && vEdges[i].Head1==vEdges[j].Head1 && vEdges[i].Head2==vEdges[j].Head2 && newchr1==chr1 && newchr2==chr2 && abs(vEdges[j].Ind2-vEdges[i].Ind2)<=Concord_Dist_Idx && abs(newpos1-pos1)<=Concord_Dist_Pos && abs(newpos2-pos2)<=Concord_Dist_Pos)
 				nearEdges.push_back(vEdges[j]);
 		}
 		for(int j=i+1; j<vEdges.size() && vEdges[j].Ind1<=vEdges[i].Ind1+Concord_Dist_Idx && vNodes[vEdges[j].Ind1].Chr==chr1 && vNodes[vEdges[j].Ind1].Position<=pos1+Concord_Dist_Pos; j++){
-			int newpos1=(vEdges[j].Head1)? vNodes[vEdges[j].Ind1].Position:(vNodes[vEdges[j].Ind1].Position+vNodes[vEdges[j].Ind1].Length);
-			int newpos2=(vEdges[j].Head2)? vNodes[vEdges[j].Ind2].Position:(vNodes[vEdges[j].Ind2].Position+vNodes[vEdges[j].Ind2].Length);
-			if(vEdges[j].Ind1<vEdges[i].Ind2 && vEdges[i].Head1==vEdges[j].Head1 && vEdges[i].Head2==vEdges[j].Head2 && abs(vEdges[j].Ind2-vEdges[i].Ind2)<=Concord_Dist_Idx && abs(newpos1-pos1)<=Concord_Dist_Pos && abs(newpos2-pos2)<=Concord_Dist_Pos)
+			int newchr1=vNodes[vEdges[j].Ind1].Chr, newpos1=(vEdges[j].Head1)? vNodes[vEdges[j].Ind1].Position:(vNodes[vEdges[j].Ind1].Position+vNodes[vEdges[j].Ind1].Length);
+			int newchr2=vNodes[vEdges[j].Ind2].Chr, newpos2=(vEdges[j].Head2)? vNodes[vEdges[j].Ind2].Position:(vNodes[vEdges[j].Ind2].Position+vNodes[vEdges[j].Ind2].Length);
+			if(vEdges[j].Ind1<vEdges[i].Ind2 && vEdges[i].Head1==vEdges[j].Head1 && vEdges[i].Head2==vEdges[j].Head2 && newchr1==chr1 && newchr2==chr2 && abs(vEdges[j].Ind2-vEdges[i].Ind2)<=Concord_Dist_Idx && abs(newpos1-pos1)<=Concord_Dist_Pos && abs(newpos2-pos2)<=Concord_Dist_Pos)
 				nearEdges.push_back(vEdges[j]);
 		}
 		sort(nearEdges.begin(), nearEdges.end());
@@ -1040,12 +1075,98 @@ void SegmentGraph_t::FilterEdges(){
 		sort(tmp.begin(), tmp.end());
 		vector<int>::iterator endit=unique(tmp.begin(), tmp.end());
 		tmp.resize(distance(tmp.begin(), endit));
-		int count=0;
-		for(int j=1; j<tmp.size(); j++)
+		int scount=0, bcount=0, index=0;
+		for(int j=0; j+1<tmp.size(); j++)
+			if(tmp[j]<i && tmp[j+1]>i){
+				index=j; break;
+			}
+		vector<int> Label(tmp.size(), 0);
+		if(vNodes[tmp[index]].Chr!=vNodes[i].Chr || vNodes[i].Position-vNodes[tmp[index]].Position-vNodes[tmp[index]].Length<=Concord_Dist_Pos){
+			scount++; Label[index]=scount;
+		}
+		if(vNodes[tmp[index+1]].Chr!=vNodes[i].Chr || vNodes[i].Position-vNodes[tmp[index+1]].Position-vNodes[tmp[index+1]].Length<=Concord_Dist_Pos){
+			bcount++; Label[index+1]=bcount;
+		}
+		for(int j=index-1; j>=0; j--){
+			if(vNodes[tmp[j+1]].Chr!=vNodes[tmp[j]].Chr || vNodes[tmp[j+1]].Position-vNodes[tmp[j]].Position-vNodes[tmp[j]].Length>Concord_Dist_Pos)
+				scount++;
+			Label[j]=scount;
+		}
+		for(int j=index+2; j<tmp.size(); j++){
 			if(vNodes[tmp[j]].Chr!=vNodes[tmp[j-1]].Chr || vNodes[tmp[j]].Position-vNodes[tmp[j-1]].Position-vNodes[tmp[j-1]].Length>Concord_Dist_Pos)
-				count++;
-		if(count>2 || (vNodes[i].Support<=Min_Edge_Weight && count>0))
+				bcount++;
+			Label[j]=bcount;
+		}
+		if(scount+bcount>5)
 			BadNodes.push_back(i);
+		else{
+			vector<int> SWeight(scount, 0);
+			vector<int> BWeight(bcount, 0);
+			for(vector<Edge_t*>::iterator it=vNodes[i].HeadEdges.begin(); it!=vNodes[i].HeadEdges.end(); it++){
+				if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight){
+					int mateNode=((*it)->Ind1!=i)?(*it)->Ind1:(*it)->Ind2;
+					int mateNodeidx=distance(tmp.begin(), find(tmp.begin(), tmp.end(), mateNode));
+					if(mateNodeidx>index)
+						BWeight[Label[mateNodeidx]]+=(*it)->Weight;
+					else
+						SWeight[Label[mateNodeidx]]+=(*it)->Weight;
+				}
+			}
+			for(vector<Edge_t*>::iterator it=vNodes[i].TailEdges.begin(); it!=vNodes[i].TailEdges.end(); it++){
+				if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight){
+					int mateNode=((*it)->Ind1!=i)?(*it)->Ind1:(*it)->Ind2;
+					int mateNodeidx=distance(tmp.begin(), find(tmp.begin(), tmp.end(), mateNode));
+					if(mateNodeidx>index)
+						BWeight[Label[mateNodeidx]]+=(*it)->Weight;
+					else
+						SWeight[Label[mateNodeidx]]+=(*it)->Weight;
+				}
+			}
+			if(scount>1){
+				int maxLabel=1;
+				for(int j=1; j<SWeight.size(); j++)
+					if(SWeight[j]>SWeight[maxLabel])
+						maxLabel=j;
+				for(vector<Edge_t*>::iterator it=vNodes[i].HeadEdges.begin(); it!=vNodes[i].HeadEdges.end(); it++){
+					if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight){
+						int mateNode=((*it)->Ind1!=i)?(*it)->Ind1:(*it)->Ind2;
+						int mateNodeidx=distance(tmp.begin(), find(tmp.begin(), tmp.end(), mateNode));
+						if(mateNodeidx<=index && Label[mateNodeidx]!=maxLabel)
+							ToDelete.push_back(*(*it));
+					}
+				}
+				for(vector<Edge_t*>::iterator it=vNodes[i].TailEdges.begin(); it!=vNodes[i].TailEdges.end(); it++){
+					if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight){
+						int mateNode=((*it)->Ind1!=i)?(*it)->Ind1:(*it)->Ind2;
+						int mateNodeidx=distance(tmp.begin(), find(tmp.begin(), tmp.end(), mateNode));
+						if(mateNodeidx<=index && Label[mateNodeidx]!=maxLabel)
+							ToDelete.push_back(*(*it));
+					}
+				}
+			}
+			if(bcount>1){
+				int maxLabel=1;
+				for(int j=1; j<BWeight.size(); j++)
+					if(BWeight[j]>BWeight[maxLabel])
+						maxLabel=j;
+				for(vector<Edge_t*>::iterator it=vNodes[i].HeadEdges.begin(); it!=vNodes[i].HeadEdges.end(); it++){
+					if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight){
+						int mateNode=((*it)->Ind1!=i)?(*it)->Ind1:(*it)->Ind2;
+						int mateNodeidx=distance(tmp.begin(), find(tmp.begin(), tmp.end(), mateNode));
+						if(mateNodeidx>index && Label[mateNodeidx]!=maxLabel)
+							ToDelete.push_back(*(*it));
+					}
+				}
+				for(vector<Edge_t*>::iterator it=vNodes[i].TailEdges.begin(); it!=vNodes[i].TailEdges.end(); it++){
+					if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight){
+						int mateNode=((*it)->Ind1!=i)?(*it)->Ind1:(*it)->Ind2;
+						int mateNodeidx=distance(tmp.begin(), find(tmp.begin(), tmp.end(), mateNode));
+						if(mateNodeidx>index && Label[mateNodeidx]!=maxLabel)
+							ToDelete.push_back(*(*it));
+					}
+				}
+			}
+		}
 	}
 	sort(ToDelete.begin(), ToDelete.end());
 	sort(BadNodes.begin(), BadNodes.end());
