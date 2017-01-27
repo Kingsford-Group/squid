@@ -34,32 +34,14 @@ SegmentGraph_t::SegmentGraph_t(const vector<int>& RefLength, string bamfile){
 SegmentGraph_t::SegmentGraph_t(string graphfile){
 	ifstream input(graphfile);
 	string line;
-	// while(getline(input, line)){
-	// 	if(line[0]=='#')
-	// 		continue;
-	// 	vector<string> strs;
-	// 	boost::split(strs, line, boost::is_any_of("\t"));
-	// 	if(strs[0]=="node"){
-	// 		Node_t tmp(stoi(strs[2]), stoi(strs[3]), stoi(strs[4])-stoi(strs[3]), stoi(strs[5]), stod(strs[6]));
-	// 		vNodes.push_back(tmp);
-	// 	}
-	// 	else if(strs[0]=="edge"){
-	// 		Edge_t tmp(stoi(strs[2]), (strs[3]=="H"?true:false), stoi(strs[4]), (strs[5]=="H"?true:false), stoi(strs[6]));
-	// 		vEdges.push_back(tmp);
-	// 	}
-	// }
 	while(getline(input, line)){
+		if(line[0]=='#')
+			continue;
 		vector<string> strs;
 		boost::split(strs, line, boost::is_any_of("\t"));
-		if(line[0]=='#'){
-			if(strs.size()==1){
-				strs[0]=strs[0].substr(1);
-				int numnodes=stoi(strs[0]);
-				for(int i=0; i<numnodes; i++){
-					Node_t tmp;
-					vNodes.push_back(tmp);
-				}
-			}
+		if(strs[0]=="node"){
+			Node_t tmp(stoi(strs[2]), stoi(strs[3]), stoi(strs[4])-stoi(strs[3]), stoi(strs[5]), stod(strs[6]));
+			vNodes.push_back(tmp);
 		}
 		else if(strs[0]=="edge"){
 			Edge_t tmp(stoi(strs[2]), (strs[3]=="H"?true:false), stoi(strs[4]), (strs[5]=="H"?true:false), stoi(strs[6]));
