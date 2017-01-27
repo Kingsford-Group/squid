@@ -152,7 +152,7 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, string bamfile){
 				int disStartPos=-1, disEndPos=-1, disCount=-1;
 				bool isClusternSplit=false;
 				while(DiscordantCluster.size()!=offsetDiscordantCluster){
-					if(disStartPos!=-1 && !isClusternSplit && disCount>min(10.0, 4.0*(disEndPos-disStartPos)/ReadLen)){
+					if(disStartPos!=-1 && !isClusternSplit && disCount>min(5.0, 4.0*(disEndPos-disStartPos)/ReadLen)){
 						Node_t tmp(DiscordantCluster[offsetDiscordantCluster].RefID, disStartPos, disEndPos-disStartPos);
 						vNodes.push_back(tmp);
 						curStartPos=disEndPos; curEndPos=disEndPos;
@@ -244,7 +244,7 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, string bamfile){
 					while(DiscordantCluster.size()>offsetDiscordantCluster && DiscordantCluster[offsetDiscordantCluster].RefPos+DiscordantCluster[offsetDiscordantCluster].MatchRef<=curEndPos)
 						offsetDiscordantCluster++;
 				}
-				if(disStartPos!=-1 && !isClusternSplit && disCount>min(10.0, 4.0*(disEndPos-disStartPos)/ReadLen)){
+				if(disStartPos!=-1 && !isClusternSplit && disCount>min(5.0, 4.0*(disEndPos-disStartPos)/ReadLen)){
 					Node_t tmp(DiscordantCluster[0].RefID, disStartPos, disEndPos-disStartPos);
 					vNodes.push_back(tmp);
 					curStartPos=disEndPos; curEndPos=disEndPos;
@@ -1050,6 +1050,71 @@ void SegmentGraph_t::FilterbyInterleaving(){
 	UpdateNodeLink();
 };
 
+int SegmentGraph_t::GroupConnection(int node, vector<Edge_t*>& Edges, int sumweight, vector<int>& Connection, vector<int>& Label){
+	Connection.clear();
+	int count=0, mindist=-1, index=-1;
+	for(vector<Edge_t*>::iterator it=Edges.begin(); it!=Edges.end(); it++)
+		if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight)
+			Connection.push_back(((*it)->Ind1!=node)?(*it)->Ind1:(*it)->Ind2);
+	sort(Connection.begin(), Connection.end());
+	Label.assign(Connection.size(), -1);
+	for(int i=0; i<Connection.size(); i++)
+		if(vNodes[Connection[i]].Chr==vNodes[node].Chr && vNodes[node].Position-vNodes[Connection[i]].Position-vNodes[Connection[i]].Length<=Concord_Dist_Pos && vNodes[Connection[i]].Position-vNodes[node].Position-vNodes[node].Length<=Concord_Dist_Pos){
+			if(mindist==-1 || mindist>abs(node-Connection[i])){
+				mindist=abs(node-Connection[i]);
+				index=i;
+			}
+		}
+	if(index!=-1){
+		Label[index]=0;
+		for(int i=index+1; i<Connection.size(); i++)
+			if(vNodes[Connection[i]].Chr==vNodes[node].Chr && vNodes[Connection[i]].Position-vNodes[Connection[i-1]].Position-vNodes[Connection[i-1]].Length<=Concord_Dist_Pos)
+				Label[i]=0;
+			else
+				break;
+		for(int i=index-1; i>=0; i--)
+			if(vNodes[Connection[i]].Chr==vNodes[node].Chr && vNodes[Connection[i+1]].Position-vNodes[Connection[i]].Position-vNodes[Connection[i]].Length<=Concord_Dist_Pos)
+				Label[i]=0;
+			else
+				break;
+	}
+	if(Label.size()!=0){
+		count=(Label[0]==-1)?1:0;
+		if(Label[0]==-1)
+			Label[0]=1;
+		for(int i=1; i<Connection.size(); i++){
+			if(Label[i]!=-1)
+				continue;
+			else if(vNodes[Connection[i]].Chr!=vNodes[Connection[i-1]].Chr || vNodes[Connection[i]].Position-vNodes[Connection[i-1]].Position-vNodes[Connection[i-1]].Length>Concord_Dist_Pos){
+				count++;
+			}
+			Label[i]=count;
+		}
+	}
+	return count;
+};
+
+void SegmentGraph_t::GroupSelect(int node, vector<Edge_t*>& Edges, int sumweight, int count, vector<int>& Connection, vector<int>& Label, vector<Edge_t>& ToDelete){
+	vector<int> LabelWeight(count+1, 0);
+	for(vector<Edge_t*>::iterator it=Edges.begin(); it!=Edges.end(); it++)
+		if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight){
+			int mateNode=((*it)->Ind1!=node)?(*it)->Ind1:(*it)->Ind2;
+			int mateNodeidx=distance(Connection.begin(), find(Connection.begin(), Connection.end(), mateNode));
+			LabelWeight[Label[mateNodeidx]]+=(*it)->Weight;
+		}
+	int maxLabel=1;
+	for(int i=1; i<LabelWeight.size(); i++)
+		if(LabelWeight[i]>LabelWeight[maxLabel])
+			maxLabel=i;
+	for(vector<Edge_t*>::iterator it=Edges.begin(); it!=Edges.end(); it++)
+		if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight){
+			int mateNode=((*it)->Ind1!=node)?(*it)->Ind1:(*it)->Ind2;
+			int mateNodeidx=distance(Connection.begin(), find(Connection.begin(), Connection.end(), mateNode));
+			if(Label[mateNodeidx]!=maxLabel && Label[mateNodeidx]!=0)
+				ToDelete.push_back(*(*it));
+		}
+};
+
 void SegmentGraph_t::FilterEdges(){
 	vector<int> BadNodes;
 	vector<Edge_t> ToDelete;
@@ -1061,111 +1126,27 @@ void SegmentGraph_t::FilterEdges(){
 			sumweight+=(*it)->Weight;
 		vector<int> tmp;
 		for(vector<Edge_t*>::iterator it=vNodes[i].HeadEdges.begin(); it!=vNodes[i].HeadEdges.end(); it++){
-			if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight)
-				tmp.push_back(((*it)->Ind1!=i)?(*it)->Ind1:(*it)->Ind2);
-			else
+			if((*it)->GroupWeight<=0.01*sumweight && (*it)->GroupWeight<=Min_Edge_Weight)
 				ToDelete.push_back(*(*it));
 		}
 		for(vector<Edge_t*>::iterator it=vNodes[i].TailEdges.begin(); it!=vNodes[i].TailEdges.end(); it++){
-			if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight)
-				tmp.push_back(((*it)->Ind1!=i)?(*it)->Ind1:(*it)->Ind2);
-			else
+			if((*it)->GroupWeight<=0.01*sumweight && (*it)->GroupWeight<=Min_Edge_Weight)
 				ToDelete.push_back(*(*it));
 		}
-		sort(tmp.begin(), tmp.end());
-		vector<int>::iterator endit=unique(tmp.begin(), tmp.end());
-		tmp.resize(distance(tmp.begin(), endit));
-		int scount=0, bcount=0, index=0;
-		for(int j=0; j+1<tmp.size(); j++)
-			if(tmp[j]<i && tmp[j+1]>i){
-				index=j; break;
-			}
-		vector<int> Label(tmp.size(), 0);
-		if(vNodes[tmp[index]].Chr!=vNodes[i].Chr || vNodes[i].Position-vNodes[tmp[index]].Position-vNodes[tmp[index]].Length<=Concord_Dist_Pos){
-			scount++; Label[index]=scount;
-		}
-		if(vNodes[tmp[index+1]].Chr!=vNodes[i].Chr || vNodes[i].Position-vNodes[tmp[index+1]].Position-vNodes[tmp[index+1]].Length<=Concord_Dist_Pos){
-			bcount++; Label[index+1]=bcount;
-		}
-		for(int j=index-1; j>=0; j--){
-			if(vNodes[tmp[j+1]].Chr!=vNodes[tmp[j]].Chr || vNodes[tmp[j+1]].Position-vNodes[tmp[j]].Position-vNodes[tmp[j]].Length>Concord_Dist_Pos)
-				scount++;
-			Label[j]=scount;
-		}
-		for(int j=index+2; j<tmp.size(); j++){
-			if(vNodes[tmp[j]].Chr!=vNodes[tmp[j-1]].Chr || vNodes[tmp[j]].Position-vNodes[tmp[j-1]].Position-vNodes[tmp[j-1]].Length>Concord_Dist_Pos)
-				bcount++;
-			Label[j]=bcount;
-		}
-		if(scount+bcount>5)
+		vector<int> HeadConn, TailConn;
+		vector<int> HeadLabel, TailLabel;
+		int headcount=0, tailcount=0;
+		if(vNodes[i].HeadEdges.size()!=0)
+			headcount=GroupConnection(i, vNodes[i].HeadEdges, sumweight, HeadConn, HeadLabel);
+		if(vNodes[i].TailEdges.size()!=0)
+			tailcount=GroupConnection(i, vNodes[i].TailEdges, sumweight, TailConn, TailLabel);
+		if(headcount+tailcount>5)
 			BadNodes.push_back(i);
 		else{
-			vector<int> SWeight(scount, 0);
-			vector<int> BWeight(bcount, 0);
-			for(vector<Edge_t*>::iterator it=vNodes[i].HeadEdges.begin(); it!=vNodes[i].HeadEdges.end(); it++){
-				if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight){
-					int mateNode=((*it)->Ind1!=i)?(*it)->Ind1:(*it)->Ind2;
-					int mateNodeidx=distance(tmp.begin(), find(tmp.begin(), tmp.end(), mateNode));
-					if(mateNodeidx>index)
-						BWeight[Label[mateNodeidx]]+=(*it)->Weight;
-					else
-						SWeight[Label[mateNodeidx]]+=(*it)->Weight;
-				}
-			}
-			for(vector<Edge_t*>::iterator it=vNodes[i].TailEdges.begin(); it!=vNodes[i].TailEdges.end(); it++){
-				if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight){
-					int mateNode=((*it)->Ind1!=i)?(*it)->Ind1:(*it)->Ind2;
-					int mateNodeidx=distance(tmp.begin(), find(tmp.begin(), tmp.end(), mateNode));
-					if(mateNodeidx>index)
-						BWeight[Label[mateNodeidx]]+=(*it)->Weight;
-					else
-						SWeight[Label[mateNodeidx]]+=(*it)->Weight;
-				}
-			}
-			if(scount>1){
-				int maxLabel=1;
-				for(int j=1; j<SWeight.size(); j++)
-					if(SWeight[j]>SWeight[maxLabel])
-						maxLabel=j;
-				for(vector<Edge_t*>::iterator it=vNodes[i].HeadEdges.begin(); it!=vNodes[i].HeadEdges.end(); it++){
-					if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight){
-						int mateNode=((*it)->Ind1!=i)?(*it)->Ind1:(*it)->Ind2;
-						int mateNodeidx=distance(tmp.begin(), find(tmp.begin(), tmp.end(), mateNode));
-						if(mateNodeidx<=index && Label[mateNodeidx]!=maxLabel)
-							ToDelete.push_back(*(*it));
-					}
-				}
-				for(vector<Edge_t*>::iterator it=vNodes[i].TailEdges.begin(); it!=vNodes[i].TailEdges.end(); it++){
-					if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight){
-						int mateNode=((*it)->Ind1!=i)?(*it)->Ind1:(*it)->Ind2;
-						int mateNodeidx=distance(tmp.begin(), find(tmp.begin(), tmp.end(), mateNode));
-						if(mateNodeidx<=index && Label[mateNodeidx]!=maxLabel)
-							ToDelete.push_back(*(*it));
-					}
-				}
-			}
-			if(bcount>1){
-				int maxLabel=1;
-				for(int j=1; j<BWeight.size(); j++)
-					if(BWeight[j]>BWeight[maxLabel])
-						maxLabel=j;
-				for(vector<Edge_t*>::iterator it=vNodes[i].HeadEdges.begin(); it!=vNodes[i].HeadEdges.end(); it++){
-					if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight){
-						int mateNode=((*it)->Ind1!=i)?(*it)->Ind1:(*it)->Ind2;
-						int mateNodeidx=distance(tmp.begin(), find(tmp.begin(), tmp.end(), mateNode));
-						if(mateNodeidx>index && Label[mateNodeidx]!=maxLabel)
-							ToDelete.push_back(*(*it));
-					}
-				}
-				for(vector<Edge_t*>::iterator it=vNodes[i].TailEdges.begin(); it!=vNodes[i].TailEdges.end(); it++){
-					if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight){
-						int mateNode=((*it)->Ind1!=i)?(*it)->Ind1:(*it)->Ind2;
-						int mateNodeidx=distance(tmp.begin(), find(tmp.begin(), tmp.end(), mateNode));
-						if(mateNodeidx>index && Label[mateNodeidx]!=maxLabel)
-							ToDelete.push_back(*(*it));
-					}
-				}
-			}
+			if(headcount>1)
+				GroupSelect(i, vNodes[i].HeadEdges, sumweight, headcount, HeadConn, HeadLabel, ToDelete);
+			if(tailcount>1)
+				GroupSelect(i, vNodes[i].TailEdges, sumweight, tailcount, TailConn, TailLabel, ToDelete);
 		}
 	}
 	sort(ToDelete.begin(), ToDelete.end());
