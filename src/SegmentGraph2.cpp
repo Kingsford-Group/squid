@@ -109,7 +109,12 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, string bamfile){
 				countreadlen++;
 			}
 			// remove multi-aligned reads XXX check GetTag really works!!!
-			if(record.MapQuality==0 || record.IsDuplicate() || !record.IsMapped() || record.RefID==-1)
+			bool XAtag=record.HasTag("XA");
+			bool IHtag=record.HasTag("IH");
+			int IHtagvalue=0;
+			if(IHtag)
+				record.GetTag("IH", IHtagvalue);
+			if(XAtag || IHtagvalue>1 || record.MapQuality==0 || record.IsDuplicate() || !record.IsMapped() || record.RefID==-1)
 				continue;
 			if((DiscordantCluster.size()!=offsetDiscordantCluster && record.RefID!=DiscordantCluster[offsetDiscordantCluster].RefID) || (ConcordantCluster.size()!=offsetConcordantCluster && record.RefID!=ConcordantCluster[offsetConcordantCluster].RefID) || (PartialAlignCluster.size()!=offsetPartialAlignCluster && record.RefID!=PartialAlignCluster[offsetPartialAlignCluster].RefID))
 				otherrightmost=0;
@@ -648,19 +653,29 @@ void SegmentGraph_t::RawEdges(string bamfile){
 		cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Starting building edges."<<endl;
 		while(bamreader.GetNextAlignment(record)){
 			// remove multi-aligned reads XXX check GetTag really works!!!
-			if(record.IsDuplicate() || record.MapQuality==0 || !record.IsMapped() || !record.IsFirstMate())
+			bool XAtag=record.HasTag("XA");
+			bool IHtag=record.HasTag("IH");
+			int IHtagvalue=0;
+			if(IHtag)
+				record.GetTag("IH", IHtagvalue);
+			if(record.IsDuplicate() || record.MapQuality==0 || !record.IsMapped())
+				continue;
+			else if((XAtag || IHtagvalue>1) && record.IsFirstMate())
+				continue;
+			else if(!(XAtag || IHtagvalue>1) && !record.IsFirstMate())
 				continue;
 			ReadRec_t readrec(record);
 			readrec.SortbyReadPos();
-
-			if(readrec.FirstRead.size()!=0 && readrec.FirstRead.front().ReadPos > 15 && !readrec.FirstLowPhred)
-				PartialAlign.push_back(readrec);
-			else if(readrec.FirstRead.size()!=0 && readrec.FirstTotalLen-readrec.FirstRead.back().ReadPos-readrec.FirstRead.back().MatchRead > 15 && !readrec.FirstLowPhred)
-				PartialAlign.push_back(readrec);
-			if(readrec.SecondMate.size()!=0 && readrec.SecondMate.front().ReadPos > 15 && !readrec.SecondLowPhred)
-				PartialAlign.push_back(readrec);
-			else if(readrec.SecondMate.size()!=0 && readrec.SecondTotalLen-readrec.SecondMate.back().ReadPos-readrec.SecondMate.back().MatchRead > 15 && !readrec.SecondLowPhred)
-				PartialAlign.push_back(readrec);
+			if(!(XAtag || IHtagvalue>1)){
+				if(readrec.FirstRead.size()!=0 && readrec.FirstRead.front().ReadPos > 15 && !readrec.FirstLowPhred)
+					PartialAlign.push_back(readrec);
+				else if(readrec.FirstRead.size()!=0 && readrec.FirstTotalLen-readrec.FirstRead.back().ReadPos-readrec.FirstRead.back().MatchRead > 15 && !readrec.FirstLowPhred)
+					PartialAlign.push_back(readrec);
+				if(readrec.SecondMate.size()!=0 && readrec.SecondMate.front().ReadPos > 15 && !readrec.SecondLowPhred)
+					PartialAlign.push_back(readrec);
+				else if(readrec.SecondMate.size()!=0 && readrec.SecondTotalLen-readrec.SecondMate.back().ReadPos-readrec.SecondMate.back().MatchRead > 15 && !readrec.SecondLowPhred)
+					PartialAlign.push_back(readrec);
+			}
 
 			if(record.IsFirstMate() && record.IsMateMapped() && record.MateRefID!=-1){
 				SingleBamRec_t tmp(record.MateRefID, record.MatePosition, 0, 15, 15, 60, record.IsMateReverseStrand(), false);
@@ -741,12 +756,54 @@ void SegmentGraph_t::RawEdges(string bamfile){
 					}
 				}
 			}
+			else if(!record.IsFirstMate() && (readrec.SecondMate.front().ReadPos <= 15 || readrec.SecondLowPhred)){
+				vector<int> tmpRead_Node=LocateRead(firstfrontindex, readrec);
+				if(tmpRead_Node[0]!=-1)
+					firstfrontindex=tmpRead_Node[0];
+				if(readrec.FirstRead.size()>0 && readrec.SecondMate.size()>0){
+					if(!readrec.IsSingleAnchored() && !readrec.IsEndDiscordant(true) && !readrec.IsEndDiscordant(false)){
+						i=tmpRead_Node[(int)readrec.FirstRead.size()-1]; j=tmpRead_Node.back();
+						bool isoverlap=false;
+						for(int k=0; k<readrec.FirstRead.size(); k++)
+							if(j==tmpRead_Node[k])
+								isoverlap=true;
+						for(int k=0; k<readrec.SecondMate.size(); k++)
+							if(i==tmpRead_Node[(int)readrec.FirstRead.size()+k])
+								isoverlap=true;
+						if(i!=j && i!=-1 && j!=-1 && !isoverlap){
+							bool tmpHead1=(readrec.FirstRead.back().IsReverse)?true:false, tmpHead2=(readrec.SecondMate.back().IsReverse)?true:false;
+							Edge_t tmp(i, tmpHead1, j, tmpHead2, -1);
+							assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
+							if(IsDiscordant(&tmp)){
+								SecondDisMulti.push_back(readrec.Qname);
+								SecondEdges.push_back(tmp);
+							}
+						}
+					}
+				}
+			}
+			if(FirstDisInserted.size()==FirstDisInserted.capacity())
+				FirstDisInserted.reserve(2*FirstDisInserted.size());
+			if(SecondDisMulti.size()==SecondDisMulti.capacity())
+				SecondDisMulti.reserve(2*SecondDisMulti.size());
+			if(SecondEdges.size()==SecondEdges.capacity())
+				SecondEdges.reserve(2*SecondEdges.size());
 		}
 		bamreader.Close();
 		time(&CurrentTime);
 		CurrentTimeStr=ctime(&CurrentTime);
 		cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Finish raw edges."<<endl;
 	}
+	assert(SecondEdges.size()==SecondDisMulti.size());
+	sort(FirstDisInserted.begin(), FirstDisInserted.end());
+	for(int i=0; i<SecondDisMulti.size(); i++){
+		if(binary_search(FirstDisInserted.begin(), FirstDisInserted.end(), SecondDisMulti[i])){
+			vEdges.push_back(SecondEdges[i]);
+		}
+	}
+	time(&CurrentTime);
+	CurrentTimeStr=ctime(&CurrentTime);
+	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Finish filtering edges from multi-aligned reads."<<endl;
 	sort(PartialAlign.begin(), PartialAlign.end());
 	ReadRec_t mergedreadrec;
 	for(vector<ReadRec_t>::iterator it=PartialAlign.begin(); it!=PartialAlign.end(); it++){
