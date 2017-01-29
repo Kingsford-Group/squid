@@ -31,13 +31,7 @@ int main(int argc, char* argv[]){
 		vector< vector<int> > Read_Node;
 		SegmentGraph_t SegmentGraph(RefLength, SBamrecord, Read_Node);
 		cout<<"Read_Node size correct? "<<(Read_Node.size()==SBamrecord.size())<<endl;
-		for(int i=0; i<SBamrecord.size(); i++){
-			if((int)SBamrecord[i].FirstRead.size()+(int)SBamrecord[i].SecondMate.size()!=(int)Read_Node[i].size())
-				cout<<"wrong size\n";
-			for(int j=0; j<Read_Node[i].size(); j++)
-				if(Read_Node[i][j]!=-1 && Read_Node[i][j]>=SegmentGraph.vNodes.size())
-					cout<<"out of range\n";
-		}
+
 		if(Print_Graph)
 			SegmentGraph.OutputGraph(Output_Prefix+"_graph.txt");
 		vector< vector<int> > Components=SegmentGraph.Ordering();
