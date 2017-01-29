@@ -94,6 +94,10 @@ public:
     bool MergeSingleton_Insert(vector<int> SingletonComponent, vector< vector<int> >& NewComponents);
     bool MergeSingleton_Insert(vector< vector<int> > Consecutive, vector< vector<int> >& NewComponents);
     vector< vector<int> > MergeComponents(vector< vector<int> >& Components, int cutoff=5);
+
+    // small functions
+    int GroupConnection(int node, vector<Edge_t*>& Edges, int sumweight, vector<int>& Connection, vector<int>& Label);
+    void GroupSelect(int node, vector<Edge_t*>& Edges, int sumweight, int count, vector<int>& Connection, vector<int>& Label, vector<Edge_t>& ToDelete);
 };
 
 #endif

@@ -620,7 +620,7 @@ void SegmentGraph_t::BuildEdges(SBamrecord_t& SBamrecord, vector< vector<int> >&
 
 	time(&CurrentTime);
 	CurrentTimeStr=ctime(&CurrentTime);
-	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Finish building edges"<<endl;
+	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Finish building edges."<<endl;
 };
 
 void SegmentGraph_t::FilterbyWeight(){
@@ -633,15 +633,15 @@ void SegmentGraph_t::FilterbyWeight(){
 		vector<Edge_t> nearEdges;
 		nearEdges.push_back(vEdges[i]);
 		for(int j=i-1; j>-1 && vEdges[j].Ind1>=vEdges[i].Ind1-Concord_Dist_Idx && vNodes[vEdges[j].Ind1].Chr==chr1 && vNodes[vEdges[j].Ind1].Position+vNodes[vEdges[j].Ind1].Length>=pos1-Concord_Dist_Pos; j--){
-			int newpos1=(vEdges[j].Head1)? vNodes[vEdges[j].Ind1].Position:(vNodes[vEdges[j].Ind1].Position+vNodes[vEdges[j].Ind1].Length);
-			int newpos2=(vEdges[j].Head2)? vNodes[vEdges[j].Ind2].Position:(vNodes[vEdges[j].Ind2].Position+vNodes[vEdges[j].Ind2].Length);
-			if(vEdges[j].Ind2>vEdges[i].Ind1 && vEdges[i].Head1==vEdges[j].Head1 && vEdges[i].Head2==vEdges[j].Head2 && abs(vEdges[j].Ind2-vEdges[i].Ind2)<=Concord_Dist_Idx && abs(newpos1-pos1)<=Concord_Dist_Pos && abs(newpos2-pos2)<=Concord_Dist_Pos)
+			int newchr1=vNodes[vEdges[j].Ind1].Chr, newpos1=(vEdges[j].Head1)? vNodes[vEdges[j].Ind1].Position:(vNodes[vEdges[j].Ind1].Position+vNodes[vEdges[j].Ind1].Length);
+			int newchr2=vNodes[vEdges[j].Ind2].Chr, newpos2=(vEdges[j].Head2)? vNodes[vEdges[j].Ind2].Position:(vNodes[vEdges[j].Ind2].Position+vNodes[vEdges[j].Ind2].Length);
+			if(vEdges[j].Ind2>vEdges[i].Ind1 && vEdges[i].Head1==vEdges[j].Head1 && vEdges[i].Head2==vEdges[j].Head2 && newchr1==chr1 && newchr2==chr2 && abs(vEdges[j].Ind2-vEdges[i].Ind2)<=Concord_Dist_Idx && abs(newpos1-pos1)<=Concord_Dist_Pos && abs(newpos2-pos2)<=Concord_Dist_Pos)
 				nearEdges.push_back(vEdges[j]);
 		}
 		for(int j=i+1; j<vEdges.size() && vEdges[j].Ind1<=vEdges[i].Ind1+Concord_Dist_Idx && vNodes[vEdges[j].Ind1].Chr==chr1 && vNodes[vEdges[j].Ind1].Position<=pos1+Concord_Dist_Pos; j++){
-			int newpos1=(vEdges[j].Head1)? vNodes[vEdges[j].Ind1].Position:(vNodes[vEdges[j].Ind1].Position+vNodes[vEdges[j].Ind1].Length);
-			int newpos2=(vEdges[j].Head2)? vNodes[vEdges[j].Ind2].Position:(vNodes[vEdges[j].Ind2].Position+vNodes[vEdges[j].Ind2].Length);
-			if(vEdges[j].Ind1<vEdges[i].Ind2 && vEdges[i].Head1==vEdges[j].Head1 && vEdges[i].Head2==vEdges[j].Head2 && abs(vEdges[j].Ind2-vEdges[i].Ind2)<=Concord_Dist_Idx && abs(newpos1-pos1)<=Concord_Dist_Pos && abs(newpos2-pos2)<=Concord_Dist_Pos)
+			int newchr1=vNodes[vEdges[j].Ind1].Chr, newpos1=(vEdges[j].Head1)? vNodes[vEdges[j].Ind1].Position:(vNodes[vEdges[j].Ind1].Position+vNodes[vEdges[j].Ind1].Length);
+			int newchr2=vNodes[vEdges[j].Ind2].Chr, newpos2=(vEdges[j].Head2)? vNodes[vEdges[j].Ind2].Position:(vNodes[vEdges[j].Ind2].Position+vNodes[vEdges[j].Ind2].Length);
+			if(vEdges[j].Ind1<vEdges[i].Ind2 && vEdges[i].Head1==vEdges[j].Head1 && vEdges[i].Head2==vEdges[j].Head2 && newchr1==chr1 && newchr2==chr2 && abs(vEdges[j].Ind2-vEdges[i].Ind2)<=Concord_Dist_Idx && abs(newpos1-pos1)<=Concord_Dist_Pos && abs(newpos2-pos2)<=Concord_Dist_Pos)
 				nearEdges.push_back(vEdges[j]);
 		}
 		sort(nearEdges.begin(), nearEdges.end());
@@ -774,6 +774,71 @@ void SegmentGraph_t::FilterbyInterleaving(){
 	UpdateNodeLink();
 };
 
+int SegmentGraph_t::GroupConnection(int node, vector<Edge_t*>& Edges, int sumweight, vector<int>& Connection, vector<int>& Label){
+	Connection.clear();
+	int count=0, mindist=-1, index=-1;
+	for(vector<Edge_t*>::iterator it=Edges.begin(); it!=Edges.end(); it++)
+		if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight)
+			Connection.push_back(((*it)->Ind1!=node)?(*it)->Ind1:(*it)->Ind2);
+	sort(Connection.begin(), Connection.end());
+	Label.assign(Connection.size(), -1);
+	for(int i=0; i<Connection.size(); i++)
+		if(vNodes[Connection[i]].Chr==vNodes[node].Chr && vNodes[node].Position-vNodes[Connection[i]].Position-vNodes[Connection[i]].Length<=Concord_Dist_Pos && vNodes[Connection[i]].Position-vNodes[node].Position-vNodes[node].Length<=Concord_Dist_Pos){
+			if(mindist==-1 || mindist>abs(node-Connection[i])){
+				mindist=abs(node-Connection[i]);
+				index=i;
+			}
+		}
+	if(index!=-1){
+		Label[index]=0;
+		for(int i=index+1; i<Connection.size(); i++)
+			if(vNodes[Connection[i]].Chr==vNodes[node].Chr && vNodes[Connection[i]].Position-vNodes[Connection[i-1]].Position-vNodes[Connection[i-1]].Length<=Concord_Dist_Pos)
+				Label[i]=0;
+			else
+				break;
+		for(int i=index-1; i>=0; i--)
+			if(vNodes[Connection[i]].Chr==vNodes[node].Chr && vNodes[Connection[i+1]].Position-vNodes[Connection[i]].Position-vNodes[Connection[i]].Length<=Concord_Dist_Pos)
+				Label[i]=0;
+			else
+				break;
+	}
+	if(Label.size()!=0){
+		count=(Label[0]==-1)?1:0;
+		if(Label[0]==-1)
+			Label[0]=1;
+		for(int i=1; i<Connection.size(); i++){
+			if(Label[i]!=-1)
+				continue;
+			else if(vNodes[Connection[i]].Chr!=vNodes[Connection[i-1]].Chr || vNodes[Connection[i]].Position-vNodes[Connection[i-1]].Position-vNodes[Connection[i-1]].Length>Concord_Dist_Pos){
+				count++;
+			}
+			Label[i]=count;
+		}
+	}
+	return count;
+};
+
+void SegmentGraph_t::GroupSelect(int node, vector<Edge_t*>& Edges, int sumweight, int count, vector<int>& Connection, vector<int>& Label, vector<Edge_t>& ToDelete){
+	vector<int> LabelWeight(count+1, 0);
+	for(vector<Edge_t*>::iterator it=Edges.begin(); it!=Edges.end(); it++)
+		if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight){
+			int mateNode=((*it)->Ind1!=node)?(*it)->Ind1:(*it)->Ind2;
+			int mateNodeidx=distance(Connection.begin(), find(Connection.begin(), Connection.end(), mateNode));
+			LabelWeight[Label[mateNodeidx]]+=(*it)->Weight;
+		}
+	int maxLabel=1;
+	for(int i=1; i<LabelWeight.size(); i++)
+		if(LabelWeight[i]>LabelWeight[maxLabel])
+			maxLabel=i;
+	for(vector<Edge_t*>::iterator it=Edges.begin(); it!=Edges.end(); it++)
+		if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight){
+			int mateNode=((*it)->Ind1!=node)?(*it)->Ind1:(*it)->Ind2;
+			int mateNodeidx=distance(Connection.begin(), find(Connection.begin(), Connection.end(), mateNode));
+			if(Label[mateNodeidx]!=maxLabel && Label[mateNodeidx]!=0)
+				ToDelete.push_back(*(*it));
+		}
+};
+
 void SegmentGraph_t::FilterEdges(){
 	vector<int> BadNodes;
 	vector<Edge_t> ToDelete;
@@ -785,26 +850,28 @@ void SegmentGraph_t::FilterEdges(){
 			sumweight+=(*it)->Weight;
 		vector<int> tmp;
 		for(vector<Edge_t*>::iterator it=vNodes[i].HeadEdges.begin(); it!=vNodes[i].HeadEdges.end(); it++){
-			if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight)
-				tmp.push_back(((*it)->Ind1!=i)?(*it)->Ind1:(*it)->Ind2);
-			else
+			if((*it)->GroupWeight<=0.01*sumweight && (*it)->GroupWeight<=Min_Edge_Weight)
 				ToDelete.push_back(*(*it));
 		}
 		for(vector<Edge_t*>::iterator it=vNodes[i].TailEdges.begin(); it!=vNodes[i].TailEdges.end(); it++){
-			if((*it)->GroupWeight>0.01*sumweight || (*it)->GroupWeight>Min_Edge_Weight)
-				tmp.push_back(((*it)->Ind1!=i)?(*it)->Ind1:(*it)->Ind2);
-			else
+			if((*it)->GroupWeight<=0.01*sumweight && (*it)->GroupWeight<=Min_Edge_Weight)
 				ToDelete.push_back(*(*it));
 		}
-		sort(tmp.begin(), tmp.end());
-		vector<int>::iterator endit=unique(tmp.begin(), tmp.end());
-		tmp.resize(distance(tmp.begin(), endit));
-		int count=0;
-		for(int j=1; j<tmp.size(); j++)
-			if(vNodes[tmp[j]].Chr!=vNodes[tmp[j-1]].Chr || vNodes[tmp[j]].Position-vNodes[tmp[j-1]].Position-vNodes[tmp[j-1]].Length>Concord_Dist_Pos)
-				count++;
-		if(count>2 || (vNodes[i].Support<=Min_Edge_Weight && count>0))
+		vector<int> HeadConn, TailConn;
+		vector<int> HeadLabel, TailLabel;
+		int headcount=0, tailcount=0;
+		if(vNodes[i].HeadEdges.size()!=0)
+			headcount=GroupConnection(i, vNodes[i].HeadEdges, sumweight, HeadConn, HeadLabel);
+		if(vNodes[i].TailEdges.size()!=0)
+			tailcount=GroupConnection(i, vNodes[i].TailEdges, sumweight, TailConn, TailLabel);
+		if(headcount+tailcount>5)
 			BadNodes.push_back(i);
+		else{
+			if(headcount>1)
+				GroupSelect(i, vNodes[i].HeadEdges, sumweight, headcount, HeadConn, HeadLabel, ToDelete);
+			if(tailcount>1)
+				GroupSelect(i, vNodes[i].TailEdges, sumweight, tailcount, TailConn, TailLabel, ToDelete);
+		}
 	}
 	sort(ToDelete.begin(), ToDelete.end());
 	sort(BadNodes.begin(), BadNodes.end());
@@ -1341,7 +1408,7 @@ vector< vector<int> > SegmentGraph_t::Ordering(){
 			BestOrders[i].push_back(CompNodes.begin()->first+1);
 			continue;
 		}
-		cout<<"component "<<i<<endl;
+		//cout<<"component "<<i<<endl;
 		BestOrders[i]=MincutRecursion(CompNodes, CompEdges);
 	}
 	return BestOrders;
