@@ -168,40 +168,35 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, SBamrecord_t& SBamr
 		for(itdisend=itdisstart; itdisend!=bamdiscordant.cend() && itdisend->RefID==itdisstart->RefID && itdisend->RefPos<disrightmost+ReadLen; itdisend++){
 			disrightmost = (disrightmost>itdisend->RefPos+itdisend->MatchRef)?disrightmost:(itdisend->RefPos+itdisend->MatchRef);
 		}
-		for(; itallstart!=bamall.cend() && itallstart->RefID<itdisstart->RefID; itallstart++){}
+		for(; itallstart!=bamall.cend() && (itallstart->RefID<itdisstart->RefID || (itallstart->RefID==itdisstart->RefID && vNodes.size()!=0 && vNodes.back().Chr==itdisstart->RefID && itallstart->RefPos+itallstart->MatchRef<vNodes.back().Position+vNodes.back().Length)); itallstart++){}
 		prev0CovPos=itallstart->RefPos;
 		allrightmost=itallstart->RefPos+itallstart->MatchRef;
 		for(; itallstart!=bamall.cend() && itallstart->RefPos+itallstart->MatchRef+ReadLen<itdisstart->RefPos; itallstart++){
-			if(itallstart->RefPos>allrightmost){
-				if(markedNodeStart!=-1){
-					if(allrightmost>markedNodeStart && allrightmost-markedNodeStart<thresh*20 && vNodes.size()>0 && markedNodeStart==vNodes.back().Position+vNodes.back().Length){
-						vNodes.back().Length+=allrightmost-markedNodeStart;
-					}
-					else if(allrightmost>markedNodeStart && allrightmost-markedNodeStart>=thresh*20){
-						Node_t tmp(markedNodeChr, markedNodeStart, allrightmost-markedNodeStart);
-						vNodes.push_back(tmp);
-					}
-					markedNodeStart=-1; markedNodeChr=-1;
-				}
+			if(itallstart->RefPos>allrightmost)
 				prev0CovPos=itallstart->RefPos;
-			}
 			allrightmost = (allrightmost>itallstart->RefPos+itallstart->MatchRef)?allrightmost:(itallstart->RefPos+itallstart->MatchRef);
 		}
-		for(itallend=itallstart; itallend!=bamall.cend() && itallend->RefID==itdisstart->RefID && itallend->RefPos<itdisend->RefPos+ReadLen; itallend++){
+		if(itallstart->RefPos>allrightmost)
+			prev0CovPos=itallstart->RefPos;
+		for(itallend=itallstart; itallend!=bamall.cend() && itallend->RefID==itdisstart->RefID && itallend->RefPos<disrightmost+ReadLen; itallend++){
 			allrightmost = (allrightmost>itallend->RefPos+itallend->MatchRef)?allrightmost:(itallend->RefPos+itallend->MatchRef);
 		}
 		for(; itpartstart!=PartAlignPos.end() && (itpartstart->first<itdisstart->RefID || (itpartstart->first==itdisstart->RefID && itpartstart->second+ReadLen<itdisstart->RefPos)); itpartstart++){}
-		for(itpartend=itpartstart; itpartend!=PartAlignPos.end() && itpartend->first==itdisstart->RefID && itpartend->second<itdisend->RefPos+ReadLen; itpartend++){}
+		for(itpartend=itpartstart; itpartend!=PartAlignPos.end() && itpartend->first==itdisstart->RefID && itpartend->second<disrightmost+ReadLen; itpartend++){}
 
 		int curEndPos=0, curStartPos=(prev0CovPos>markedNodeStart)?prev0CovPos:markedNodeStart;
 		int disStartPos=-1, disEndPos=-1, disCount=-1;
 		bool isClusternSplit=false;
 		while(itdisstart!=itdisend){
 			if(disStartPos!=-1 && !isClusternSplit && disCount>min(5.0, 4.0*(disEndPos-disStartPos)/ReadLen)){
-				Node_t tmp(itdisstart->RefID, disStartPos, disEndPos-disStartPos);
-				vNodes.push_back(tmp);
+				if(vNodes.size()!=0 && vNodes.back().Chr==itdisstart->RefID && disEndPos-vNodes.back().Position-vNodes.back().Length<thresh*20)
+					vNodes.back().Length+=disEndPos-vNodes.back().Position-vNodes.back().Length;
+				else{
+					Node_t tmp(itdisstart->RefID, disStartPos, disEndPos-disStartPos);
+					vNodes.push_back(tmp);
+				}
 				curStartPos=disEndPos; curEndPos=disEndPos;
-				markedNodeStart=disEndPos; markedNodeChr=tmp.Chr;
+				markedNodeStart=disEndPos; markedNodeChr=itdisstart->RefID;
 			}
 			isClusternSplit=false;
 			vector<int> MarginPositions;
@@ -216,10 +211,12 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, SBamrecord_t& SBamr
 			disStartPos=max(curStartPos, itdisstart->RefPos);
 			disEndPos=curEndPos;
 			disCount=distance(itdisstart, itdiscurrent);
-			for(itdiscurrent++; itdiscurrent!=itdisend && itdiscurrent->RefPos<curEndPos+thresh; itdiscurrent++){
-				MarginPositions.push_back(itdiscurrent->RefPos); MarginPositions.push_back(itdiscurrent->RefPos+itdiscurrent->MatchRef);
+			if(itdiscurrent!=itdisend){
+				for(itdiscurrent++; itdiscurrent!=itdisend && itdiscurrent->RefPos<curEndPos+thresh; itdiscurrent++){
+					MarginPositions.push_back(itdiscurrent->RefPos); MarginPositions.push_back(itdiscurrent->RefPos+itdiscurrent->MatchRef);
+				}
 			}
-			for(itpartcurrent=itpartstart; itpartcurrent!=itpartend; itpartcurrent++){
+			for(itpartcurrent=itpartstart; itpartcurrent!=itpartend && itpartcurrent->second<curEndPos+thresh; itpartcurrent++){
 				MarginPositions.push_back(itpartcurrent->second);
 			}
 			sort(MarginPositions.begin(), MarginPositions.end());
@@ -280,18 +277,56 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, SBamrecord_t& SBamr
 				itdisstart++;
 		}
 		if(disStartPos!=-1 && !isClusternSplit && disCount>min(5.0, 4.0*(disEndPos-disStartPos)/ReadLen)){
-			Node_t tmp((itdisend-1)->RefID, disStartPos, disEndPos-disStartPos);
-			vNodes.push_back(tmp);
+			if(vNodes.size()!=0 && vNodes.back().Chr==(itdisend-1)->RefID && disEndPos-vNodes.back().Position-vNodes.back().Length<thresh*20)
+				vNodes.back().Length+=disEndPos-vNodes.back().Position-vNodes.back().Length;
+			else{
+				Node_t tmp((itdisend-1)->RefID, disStartPos, disEndPos-disStartPos);
+				vNodes.push_back(tmp);
+			}
 			curStartPos=disEndPos; curEndPos=disEndPos;
-			markedNodeStart=disEndPos; markedNodeChr=tmp.Chr;
+			markedNodeStart=disEndPos; markedNodeChr=(itdisend-1)->RefID;
+		}
+
+		for(itallend=itallstart; itallend!=bamall.cend() && itallend->RefID==(itdisend-1)->RefID; itallend++){
+			if((itdisend-1)->RefID==itdisend->RefID && itallend->RefPos+itallend->MatchRef+ReadLen>=itdisend->RefPos)
+				break;
+			else if(itallend->RefPos>allrightmost){
+				if(markedNodeStart!=-1){
+					if(allrightmost>markedNodeStart && allrightmost-markedNodeStart<thresh*20 && vNodes.size()>0 && markedNodeStart==vNodes.back().Position+vNodes.back().Length){
+						vNodes.back().Length+=allrightmost-markedNodeStart;
+					}
+					else if(allrightmost>markedNodeStart && allrightmost-markedNodeStart>=thresh*20){
+						Node_t tmp(markedNodeChr, markedNodeStart, allrightmost-markedNodeStart);
+						vNodes.push_back(tmp);
+					}
+					markedNodeStart=-1; markedNodeChr=-1;
+					break;
+				}
+			}
+			allrightmost = (allrightmost>itallend->RefPos+itallend->MatchRef)?allrightmost:(itallend->RefPos+itallend->MatchRef);
+		}
+		if(itallend->RefID!=(itdisend-1)->RefID && markedNodeStart!=-1){
+			if(allrightmost>markedNodeStart && allrightmost-markedNodeStart<thresh*20 && vNodes.size()>0 && markedNodeStart==vNodes.back().Position+vNodes.back().Length){
+				vNodes.back().Length+=allrightmost-markedNodeStart;
+			}
+			else if(allrightmost>markedNodeStart && allrightmost-markedNodeStart>=thresh*20){
+				Node_t tmp(markedNodeChr, markedNodeStart, allrightmost-markedNodeStart);
+				vNodes.push_back(tmp);
+			}
+			markedNodeStart=-1; markedNodeChr=-1;
 		}
 
 		itdisstart=itdisend;
-		itdisstart++;
 	}
 	time(&CurrentTime);
 	CurrentTimeStr=ctime(&CurrentTime);
 	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Building nodes, finish seeding."<<endl;
+	// checking node
+	for(int i=0; i<vNodes.size(); i++){
+		assert(vNodes[i].Length>0 && vNodes[i].Position+vNodes[i].Length<=RefLength[vNodes[i].Chr]);
+		if(i+1<vNodes.size())
+			assert((vNodes[i].Chr!=vNodes[i+1].Chr) || (vNodes[i].Chr==vNodes[i+1].Chr && vNodes[i].Position+vNodes[i].Length<=vNodes[i+1].Position));
+	}
 	// expand nodes to cover whole genome
 	vector<Node_t> tmpNodes;
 	for(int i=0; i<vNodes.size(); i++){
@@ -588,6 +623,7 @@ void SegmentGraph_t::RawEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& R
 				if(i!=j && i!=-1 && j!=-1){
 					bool tmpHead1=(it->FirstRead[k].IsReverse)?true:false, tmpHead2=(it->FirstRead[k+1].IsReverse)?false:true;
 					Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
+					assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
 					vEdges.push_back(tmp);
 				}
 			}
@@ -599,6 +635,7 @@ void SegmentGraph_t::RawEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& R
 				if(i!=j && i!=-1 && j!=-1){
 					bool tmpHead1=(it->SecondMate[k].IsReverse)?true:false, tmpHead2=(it->SecondMate[k+1].IsReverse)?false:true;
 					Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
+					assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
 					vEdges.push_back(tmp);
 				}
 			}
@@ -617,6 +654,7 @@ void SegmentGraph_t::RawEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& R
 				if(i!=j && i!=-1 && j!=-1 && !isoverlap){
 					bool tmpHead1=(it->FirstRead.back().IsReverse)?true:false, tmpHead2=(it->SecondMate.back().IsReverse)?true:false;
 					Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
+					assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
 					vEdges.push_back(tmp);
 				}
 			}
