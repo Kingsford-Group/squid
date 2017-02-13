@@ -1101,11 +1101,12 @@ void SegmentGraph_t::FilterEdges(){
 	vector<int> BadNodes;
 	vector<Edge_t> ToDelete;
 	for(int i=0; i<vNodes.size(); i++){
-		int sumweight=0;
+		int headweight=0, tailweight=0, sumweight=0;
 		for(vector<Edge_t*>::iterator it=vNodes[i].HeadEdges.begin(); it!=vNodes[i].HeadEdges.end(); it++)
-			sumweight+=(*it)->Weight;
+			headweight+=(*it)->Weight;
 		for(vector<Edge_t*>::iterator it=vNodes[i].TailEdges.begin(); it!=vNodes[i].TailEdges.end(); it++)
-			sumweight+=(*it)->Weight;
+			tailweight+=(*it)->Weight;
+		sumweight=headweight+tailweight;
 		vector<int> tmp;
 		for(vector<Edge_t*>::iterator it=vNodes[i].HeadEdges.begin(); it!=vNodes[i].HeadEdges.end(); it++){
 			if((*it)->GroupWeight<=0.01*sumweight && (*it)->GroupWeight<=Min_Edge_Weight)
@@ -1127,8 +1128,16 @@ void SegmentGraph_t::FilterEdges(){
 		else{
 			if(headcount>1)
 				GroupSelect(i, vNodes[i].HeadEdges, sumweight, headcount, HeadConn, HeadLabel, ToDelete);
+			else
+				for(vector<Edge_t*>::iterator it=vNodes[i].HeadEdges.begin(); it!=vNodes[i].HeadEdges.end(); it++)
+					if(!((*it)->GroupWeight<=0.01*sumweight && (*it)->GroupWeight<=Min_Edge_Weight) && (*it)->GroupWeight<0.01*headweight)
+						ToDelete.push_back(*(*it));
 			if(tailcount>1)
 				GroupSelect(i, vNodes[i].TailEdges, sumweight, tailcount, TailConn, TailLabel, ToDelete);
+			else
+				for(vector<Edge_t*>::iterator it=vNodes[i].TailEdges.begin(); it!=vNodes[i].TailEdges.end(); it++)
+					if(!((*it)->GroupWeight<=0.01*sumweight && (*it)->GroupWeight<=Min_Edge_Weight) && (*it)->GroupWeight<0.01*tailweight)
+						ToDelete.push_back(*(*it));
 		}
 	}
 	sort(ToDelete.begin(), ToDelete.end());
@@ -1144,7 +1153,7 @@ void SegmentGraph_t::FilterEdges(){
 			double cov1=vNodes[vEdges[i].Ind1].AvgDepth;
 			double cov2=vNodes[vEdges[i].Ind2].AvgDepth;
 			double ratio=(cov1>cov2)?cov1/cov2:cov2/cov1;
-			if((vEdges[i].Weight<=10 && ratio>3) || (vEdges[i].Weight>10 && ratio>50))
+			if((vEdges[i].Weight<=Min_Edge_Weight+2 && ratio>3) || (vEdges[i].Weight>Min_Edge_Weight+2 && ratio>50))
 				cond2=false;
 		}
 		if(cond1 && cond2)
@@ -1371,7 +1380,7 @@ void SegmentGraph_t::FurtherCompressNode(){
 					curNode++;
 				vector<Edge_t> nextDiscordantEdges;
 				int j=i+1;
-				for(; j<MergeNode.size() && j<i+20 && j<minDisInd2; j++){ // find the first right nodes with discordant edges, possibly in the equivalent group
+				for(; j<MergeNode.size() && j<i+20 && j<minDisInd2 && vNodes[i].Chr==vNodes[j].Chr; j++){ // find the first right nodes with discordant edges, possibly in the equivalent group
 					for(vector<Edge_t*>::iterator itedge=vNodes[j].HeadEdges.begin(); itedge!=vNodes[j].HeadEdges.end(); itedge++)
 						if(IsDiscordant(*itedge))
 							nextDiscordantEdges.push_back(**itedge);
@@ -1389,7 +1398,7 @@ void SegmentGraph_t::FurtherCompressNode(){
 						const Edge_t& edge1=nextDiscordantEdges[k];
 						const Edge_t& edge2=nextDiscordantEdges[k+1];
 						bool samegroup = ((edge1.Ind1==j && edge2.Ind1==j) || (edge1.Ind2==j && edge2.Ind2==j));
-						if(!(abs(edge1.Ind1-edge2.Ind1)<=Concord_Dist_Idx && abs(edge1.Ind2-edge2.Ind2)<=Concord_Dist_Idx && edge1.Head1==edge2.Head1 && edge1.Head2==edge2.Head2))
+						if(!(abs(edge1.Ind1-edge2.Ind1)<=Concord_Dist_Idx && abs(edge1.Ind2-edge2.Ind2)<=Concord_Dist_Idx && vNodes[edge1.Ind1].Chr==vNodes[edge2.Ind1].Chr && vNodes[edge1.Ind2].Chr==vNodes[edge2.Ind2].Chr && edge1.Head1==edge2.Head1 && edge1.Head2==edge2.Head2))
 							samegroup=false;
 						if(!samegroup)
 							tmpDiscordantEdges.push_back(nextDiscordantEdges[k+1]);
@@ -1402,7 +1411,7 @@ void SegmentGraph_t::FurtherCompressNode(){
 						for(int l=0; l<nextDiscordantEdges.size(); l++){
 							const Edge_t& edge1=thisDiscordantEdges[k];
 							const Edge_t& edge2=nextDiscordantEdges[l];
-							if(edge1.Ind2>edge2.Ind1 && edge2.Ind2>edge1.Ind1 && abs(edge1.Ind1-edge2.Ind1)<=Concord_Dist_Idx && abs(edge1.Ind2-edge2.Ind2)<=Concord_Dist_Idx && edge1.Head1==edge2.Head1 && edge1.Head2==edge2.Head2){
+							if(edge1.Ind2>edge2.Ind1 && edge2.Ind2>edge1.Ind1 && vNodes[edge1.Ind1].Chr==vNodes[edge2.Ind1].Chr && vNodes[edge1.Ind2].Chr==vNodes[edge2.Ind2].Chr && abs(edge1.Ind1-edge2.Ind1)<=Concord_Dist_Idx && abs(edge1.Ind2-edge2.Ind2)<=Concord_Dist_Idx && edge1.Head1==edge2.Head1 && edge1.Head2==edge2.Head2){
 								thisEQ[k]=true;
 								nextEQ[l]=true;
 							}
@@ -1428,7 +1437,7 @@ void SegmentGraph_t::FurtherCompressNode(){
 		else if(thisDiscordantEdges.size()!=0){ // later nodes with discordant edges in its equivalent group
 			vector<Edge_t> nextDiscordantEdges;
 			int j=i+1;
-			for(; j<MergeNode.size() && j<i+20 && j<minDisInd2; j++){
+			for(; j<MergeNode.size() && j<i+20 && j<minDisInd2 && vNodes[i].Chr==vNodes[j].Chr; j++){
 				for(vector<Edge_t*>::iterator itedge=vNodes[j].HeadEdges.begin(); itedge!=vNodes[j].HeadEdges.end(); itedge++)
 					if(IsDiscordant(*itedge))
 						nextDiscordantEdges.push_back(**itedge);
@@ -1445,7 +1454,7 @@ void SegmentGraph_t::FurtherCompressNode(){
 				for(int k=0; k+1<thisDiscordantEdges.size(); k++){
 					const Edge_t& edge1= thisDiscordantEdges[k];
 					const Edge_t& edge2= thisDiscordantEdges[k+1];
-					if(!(abs(edge1.Ind1-edge2.Ind1)<=Concord_Dist_Idx && abs(edge1.Ind2-edge2.Ind2)<=Concord_Dist_Idx && edge1.Head1==edge2.Head1 && edge1.Head2==edge2.Head2))
+					if(!(abs(edge1.Ind1-edge2.Ind1)<=Concord_Dist_Idx && abs(edge1.Ind2-edge2.Ind2)<=Concord_Dist_Idx && vNodes[edge1.Ind1].Chr==vNodes[edge2.Ind1].Chr && vNodes[edge1.Ind2].Chr==vNodes[edge2.Ind2].Chr && edge1.Head1==edge2.Head1 && edge1.Head2==edge2.Head2))
 						tmpDiscordantEdges.push_back(thisDiscordantEdges[k+1]);
 				}
 				thisDiscordantEdges=tmpDiscordantEdges;
@@ -1454,7 +1463,7 @@ void SegmentGraph_t::FurtherCompressNode(){
 				for(int k=0; k+1<nextDiscordantEdges.size(); k++){
 					const Edge_t& edge1=nextDiscordantEdges[k];
 					const Edge_t& edge2=nextDiscordantEdges[k+1];
-					if(!(abs(edge1.Ind1-edge2.Ind1)<=Concord_Dist_Idx && abs(edge1.Ind2-edge2.Ind2)<=Concord_Dist_Idx && edge1.Head1==edge2.Head1 && edge1.Head2==edge2.Head2))
+					if(!(abs(edge1.Ind1-edge2.Ind1)<=Concord_Dist_Idx && abs(edge1.Ind2-edge2.Ind2)<=Concord_Dist_Idx && vNodes[edge1.Ind1].Chr==vNodes[edge2.Ind1].Chr && vNodes[edge1.Ind2].Chr==vNodes[edge2.Ind2].Chr && edge1.Head1==edge2.Head1 && edge1.Head2==edge2.Head2))
 						tmpDiscordantEdges.push_back(nextDiscordantEdges[k+1]);
 				}
 				nextDiscordantEdges=tmpDiscordantEdges;
@@ -1465,7 +1474,7 @@ void SegmentGraph_t::FurtherCompressNode(){
 					for(int l=0; l<nextDiscordantEdges.size(); l++){
 						const Edge_t& edge1=thisDiscordantEdges[k];
 						const Edge_t& edge2=nextDiscordantEdges[l];
-						if(edge1.Ind2>edge2.Ind1 && edge2.Ind2>edge1.Ind1 && abs(edge1.Ind1-edge2.Ind1)<=Concord_Dist_Idx && abs(edge1.Ind2-edge2.Ind2)<=Concord_Dist_Idx && edge1.Head1==edge2.Head1 && edge1.Head2==edge2.Head2){
+						if(edge1.Ind2>edge2.Ind1 && edge2.Ind2>edge1.Ind1 && vNodes[edge1.Ind1].Chr==vNodes[edge2.Ind1].Chr && vNodes[edge1.Ind2].Chr==vNodes[edge2.Ind2].Chr && abs(edge1.Ind1-edge2.Ind1)<=Concord_Dist_Idx && abs(edge1.Ind2-edge2.Ind2)<=Concord_Dist_Idx && edge1.Head1==edge2.Head1 && edge1.Head2==edge2.Head2){
 							thisEQ[k]=true;
 							nextEQ[l]=true;
 						}
