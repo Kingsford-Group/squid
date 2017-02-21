@@ -94,6 +94,21 @@ bool ReadRec_t::FrontSmallerThan(const ReadRec_t& lhs, const ReadRec_t& rhs){
 		return false;
 };
 
+bool ReadRec_t::Equal(const ReadRec_t& lhs, const ReadRec_t& rhs){
+	if(lhs.FirstRead.size()!=rhs.FirstRead.size())
+		return false;
+	if(lhs.SecondMate.size()!=rhs.SecondMate.size())
+		return false;
+	bool same=true;
+	for(int i=0; i<lhs.FirstRead.size(); i++)
+		if(lhs.FirstRead[i].RefID!=rhs.FirstRead[i].RefID || lhs.FirstRead[i].RefPos!=rhs.FirstRead[i].RefPos || lhs.FirstRead[i].MatchRef!=rhs.FirstRead[i].MatchRef)
+			same=false;
+	for(int i=0; i<lhs.SecondMate.size(); i++)
+		if(lhs.SecondMate[i].RefID!=rhs.SecondMate[i].RefID || lhs.SecondMate[i].RefPos!=rhs.SecondMate[i].RefPos || lhs.SecondMate[i].MatchRef!=rhs.SecondMate[i].MatchRef)
+			same=false;
+	return same;
+};
+
 void ReadRec_t::SortbyReadPos(){
 	sort(FirstRead.begin(), FirstRead.end(), SingleBamRec_t::CompReadPos);
 	sort(SecondMate.begin(), SecondMate.end(), SingleBamRec_t::CompReadPos);
@@ -516,8 +531,30 @@ SBamrecord_t BuildChimericSBamRecord(SBamrecord_t& SBamrecord, const std::map<st
 	}
 	clock_t starttime=clock();
 	sort(tmpBamrecord.begin(), tmpBamrecord.end(), ReadRec_t::FrontSmallerThan);
+
+	// remove PCR duplicates
+	newSBamrecord.clear();
+	for(SBamrecord_t::iterator it=tmpBamrecord.begin(); it!=tmpBamrecord.end(); it++){
+		if(newSBamrecord.size()==0)
+			newSBamrecord.push_back(*it);
+		else if(it->FirstRead.front().RefID!=newSBamrecord.back().FirstRead.front().RefID || it->FirstRead.front().RefPos!=newSBamrecord.back().FirstRead.front().RefPos)
+			newSBamrecord.push_back(*it);
+		else{
+			bool isdup=false;
+			for(SBamrecord_t::reverse_iterator it2=newSBamrecord.rbegin(); it2!=newSBamrecord.rend(); it2++){
+				if(it->FirstRead.front().RefID!=it2->FirstRead.front().RefID || it->FirstRead.front().RefPos!=it2->FirstRead.front().RefPos)
+					break;
+				if(ReadRec_t::Equal(*it, *it2)){
+					isdup=true;
+					break;
+				}
+			}
+			if(!isdup)
+				newSBamrecord.push_back(*it);
+		}
+	}
 	cout<<"sorting time="<<(1.0*(clock()-starttime)/CLOCKS_PER_SEC)<<endl;
-	return tmpBamrecord;
+	return newSBamrecord;
 };
 
 int AlignmentStat(const SBamrecord_t& SBamrecord){

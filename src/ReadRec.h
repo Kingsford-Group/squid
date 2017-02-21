@@ -40,6 +40,7 @@ public:
     ReadRec_t(BamAlignment record);
     bool operator < (const ReadRec_t& rhs) const {return Qname<rhs.Qname;};
     static bool FrontSmallerThan(const ReadRec_t& lhs, const ReadRec_t& rhs);
+    static bool Equal(const ReadRec_t& lhs, const ReadRec_t& rhs);
     void SortbyReadPos();
     void FilterSplitRecord();
     bool IsSingleAnchored() const;
