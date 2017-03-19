@@ -95,18 +95,27 @@ bool ReadRec_t::FrontSmallerThan(const ReadRec_t& lhs, const ReadRec_t& rhs){
 };
 
 bool ReadRec_t::Equal(const ReadRec_t& lhs, const ReadRec_t& rhs){
-	if(lhs.FirstRead.size()!=rhs.FirstRead.size())
-		return false;
-	if(lhs.SecondMate.size()!=rhs.SecondMate.size())
-		return false;
-	bool same=true;
-	for(int i=0; i<lhs.FirstRead.size(); i++)
-		if(lhs.FirstRead[i].RefID!=rhs.FirstRead[i].RefID || lhs.FirstRead[i].RefPos!=rhs.FirstRead[i].RefPos || lhs.FirstRead[i].MatchRef!=rhs.FirstRead[i].MatchRef)
-			same=false;
-	for(int i=0; i<lhs.SecondMate.size(); i++)
-		if(lhs.SecondMate[i].RefID!=rhs.SecondMate[i].RefID || lhs.SecondMate[i].RefPos!=rhs.SecondMate[i].RefPos || lhs.SecondMate[i].MatchRef!=rhs.SecondMate[i].MatchRef)
-			same=false;
-	return same;
+	bool same1=false;
+	bool same2=false;
+	if(lhs.FirstRead.size()==rhs.FirstRead.size() && lhs.SecondMate.size()==rhs.SecondMate.size()){
+		same1=true;
+		for(int i=0; i<lhs.FirstRead.size(); i++)
+			if(lhs.FirstRead[i].RefID!=rhs.FirstRead[i].RefID || lhs.FirstRead[i].RefPos!=rhs.FirstRead[i].RefPos || lhs.FirstRead[i].MatchRef!=rhs.FirstRead[i].MatchRef)
+				same1=false;
+		for(int i=0; i<lhs.SecondMate.size(); i++)
+			if(lhs.SecondMate[i].RefID!=rhs.SecondMate[i].RefID || lhs.SecondMate[i].RefPos!=rhs.SecondMate[i].RefPos || lhs.SecondMate[i].MatchRef!=rhs.SecondMate[i].MatchRef)
+				same1=false;
+	}
+	if(lhs.FirstRead.size()==rhs.SecondMate.size() && lhs.SecondMate.size()==rhs.FirstRead.size()){
+		same2=true;
+		for(int i=0; i<lhs.FirstRead.size(); i++)
+			if(lhs.FirstRead[i].RefID!=rhs.SecondMate[i].RefID || lhs.FirstRead[i].RefPos!=rhs.SecondMate[i].RefPos || lhs.FirstRead[i].MatchRef!=rhs.SecondMate[i].MatchRef)
+				same2=false;
+		for(int i=0; i<lhs.SecondMate.size(); i++)
+			if(lhs.SecondMate[i].RefID!=rhs.FirstRead[i].RefID || lhs.SecondMate[i].RefPos!=rhs.FirstRead[i].RefPos || lhs.SecondMate[i].MatchRef!=rhs.FirstRead[i].MatchRef)
+				same2=false;
+	}
+	return (same1 || same2);
 };
 
 void ReadRec_t::SortbyReadPos(){
