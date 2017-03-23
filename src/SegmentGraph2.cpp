@@ -639,7 +639,6 @@ void SegmentGraph_t::RawEdges(string bamfile){
 	string CurrentTimeStr;
 
 	int firstfrontindex=0, i=0, j=0;
-	clock_t starttime=clock();
 	BamReader bamreader;
 	bamreader.Open(bamfile);
 	vector<ReadRec_t> PartialAlign;

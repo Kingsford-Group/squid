@@ -2,7 +2,7 @@
 #define __SINGLEBAMREC_H__
 
 #include <iostream>
-#include<fstream>
+#include <fstream>
 #include <vector>
 #include <map>
 #include <algorithm>

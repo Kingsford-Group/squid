@@ -61,11 +61,7 @@ bool BuildRefSeq(string fafile, const std::map<string,int>& RefTable, vector<int
 
 void UpdateReference(const SegmentGraph_t& SegmentGraph, const vector< vector<int> >& Components, vector<int>& RefLength, vector<string>& RefSequence);
 
-SBamrecord_t BuildBWASBamRecord(const std::map<string,int> & RefTable, string bamfile);
-
-SBamrecord_t BuildMainSBamRecord(const std::map<string,int> & RefTable, string bamfile);
-
-SBamrecord_t BuildChimericSBamRecord(SBamrecord_t& SBamrecord, const std::map<string,int> & RefTable, string bamfile);
+void BuildChimericSBamRecord(SBamrecord_t& SBamrecord, const std::map<string,int> & RefTable, string bamfile);
 
 int AlignmentStat(const SBamrecord_t& SBamrecord);
 int AlignmentStat(const SBamrecord_t& SBamrecord, string outputfile);

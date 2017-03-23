@@ -28,6 +28,7 @@
 #include "SingleBamRec.h"
 
 using namespace std;
+using namespace BamTools;
 
 extern int Concord_Dist_Pos;
 extern int Concord_Dist_Idx;
@@ -56,21 +57,22 @@ public:
     vector<int> Label;
 public:
     SegmentGraph_t(){};
-    SegmentGraph_t(const vector<int>& RefLength,SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node);
+    SegmentGraph_t(const vector<int>& RefLength, SBamrecord_t& Chimrecord, string ConcordBamfile);
     SegmentGraph_t(string graphfile);
 
     bool IsDiscordant(int edgeidx);
     bool IsDiscordant(Edge_t* edge);
 
-    void BuildNode(const vector<int>& RefLength, SBamrecord_t& SBamrecord);
-    void BuildEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node);
+    void BuildNode(const vector<int>& RefLength, SBamrecord_t& Chimrecord, string ConcordBamfile);
+    void BuildEdges(SBamrecord_t& Chimrecord, string ConcordBamfile);
     void FilterbyWeight();
     void FilterbyInterleaving();
 
     vector<int> LocateRead(int initialguess, ReadRec_t& ReadRec);
     vector<int> LocateRead(vector<int>& singleRead_Node, ReadRec_t& ReadRec);
 
-    void RawEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node);
+    void RawEdgesChim(SBamrecord_t& Chimrecord);
+    void RawEdgesOther(SBamrecord_t& Chimrecord, string ConcordBamfile);
     
     void FilterEdges();
     void UpdateNodeLink();

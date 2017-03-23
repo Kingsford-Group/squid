@@ -338,107 +338,22 @@ void UpdateReference(const SegmentGraph_t& SegmentGraph, const vector< vector<in
 	RefSequence=newRefSequence;
 };
 
-SBamrecord_t BuildBWASBamRecord(const std::map<string,int> & RefTable, string bamfile){
-	vector<uint16_t> sample_ReadLen; sample_ReadLen.reserve(5);
+void BuildChimericSBamRecord(SBamrecord_t& SBamrecord, const std::map<string,int> & RefTable, string bamfile){
 	time_t CurrentTime;
 	string CurrentTimeStr;
-	SBamrecord_t SBamrecord; SBamrecord.reserve(66536);
-	SBamrecord_t newSBamrecord;
-	vector<string> MultiAlignedName; MultiAlignedName.reserve(66536);
-	BamReader bamreader; bamreader.Open(bamfile);
-	if(bamreader.IsOpen()){
-		time(&CurrentTime);
-		CurrentTimeStr=ctime(&CurrentTime);
-		cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] "<<"Bam file is opened, start reading bam records.\n";
-		BamAlignment record;
-		while(bamreader.GetNextAlignment(record)){
-			bool XAtag=record.HasTag("XA");
-			if(record.IsMapped() && record.IsMateMapped() && !record.IsDuplicate() && record.MapQuality>=Min_MapQual && !XAtag){
-				ReadRec_t tmp(record);
-				SBamrecord.push_back(tmp);
-				if(sample_ReadLen.size()<sample_ReadLen.capacity())
-					sample_ReadLen.push_back(max(tmp.FirstTotalLen, tmp.SecondTotalLen));
-			}
-			else if(XAtag)
-				MultiAlignedName.push_back(record.Name);
-			if(SBamrecord.capacity()==SBamrecord.size())
-				SBamrecord.reserve(SBamrecord.size()*2);
-			if(MultiAlignedName.capacity()==MultiAlignedName.size())
-				MultiAlignedName.reserve(MultiAlignedName.size()*2);
-		}
-		SBamrecord.reserve(SBamrecord.size());
-		sort(SBamrecord.begin(), SBamrecord.end());
-		sort(MultiAlignedName.begin(), MultiAlignedName.end());
-		newSBamrecord.reserve(SBamrecord.size());
-		for(SBamrecord_t::iterator it=SBamrecord.begin();it!=SBamrecord.end();it++){
-			if(newSBamrecord.size()==0 || it->Qname!=newSBamrecord.back().Qname){
-				newSBamrecord.push_back((*it));
-				if(binary_search(MultiAlignedName.begin(), MultiAlignedName.end(), it->Qname))
-					newSBamrecord.back().MultiFilter=true;
-			}
-			else{
-				if(newSBamrecord.back().FirstTotalLen==0 && it->FirstTotalLen!=0){
-					newSBamrecord.back().FirstTotalLen=it->FirstTotalLen;
-					newSBamrecord.back().FirstLowPhred=it->FirstLowPhred;
-				}
-				if(newSBamrecord.back().SecondTotalLen==0 && it->SecondTotalLen!=0){
-					newSBamrecord.back().SecondTotalLen=it->SecondTotalLen;
-					newSBamrecord.back().SecondLowPhred=it->SecondLowPhred;
-				}
-				for(vector<SingleBamRec_t>::iterator itsingle=it->FirstRead.begin(); itsingle!=it->FirstRead.end(); itsingle++)
-					newSBamrecord.back().FirstRead.push_back(*itsingle);
-				for(vector<SingleBamRec_t>::iterator itsingle=it->SecondMate.begin(); itsingle!=it->SecondMate.end(); itsingle++)
-					newSBamrecord.back().SecondMate.push_back(*itsingle);
-			}
-		}
-		SBamrecord.clear();
-		for(SBamrecord_t::iterator it=newSBamrecord.begin(); it!=newSBamrecord.end(); it++){
-			int xlen=0; // check whether first read is multi-aligned, but without XA tag
-			for(vector<SingleBamRec_t>::iterator itsingle=it->FirstRead.begin(); itsingle!=it->FirstRead.end(); itsingle++)
-				xlen+=itsingle->MatchRead;
-			if(xlen>=2*it->FirstTotalLen){
-				it->FirstRead.clear(); it->MultiFilter=true;
-			}
-			xlen=0; // check whether second mate is multi-aligned, but without XA tag
-			for(vector<SingleBamRec_t>::iterator itsingle=it->SecondMate.begin(); itsingle!=it->SecondMate.end(); itsingle++)
-				xlen+=itsingle->MatchRead;
-			if(xlen>=2*it->SecondTotalLen){
-				it->SecondMate.clear(); it->MultiFilter=true;
-			}
-			it->SortbyReadPos();
-			if(it->FirstRead.size()!=0 || it->SecondMate.size()!=0)
-				SBamrecord.push_back((*it));
-		}
-		time(&CurrentTime);
-		CurrentTimeStr=ctime(&CurrentTime);
-		cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] "<<"Finish reading bam records, start sorting\n";
+	time(&CurrentTime);
+	CurrentTimeStr=ctime(&CurrentTime);
+	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] "<<"Start reading bam file."<<endl;
 
-		SBamrecord.reserve(SBamrecord.size());
-		sort(SBamrecord.begin(), SBamrecord.end(), ReadRec_t::FrontSmallerThan);
-		bamreader.Close();
-
-		time(&CurrentTime);
-		CurrentTimeStr=ctime(&CurrentTime);
-		cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] "<<"Finish sorting bam records\n";
-
-		// infer read length
-		sort(sample_ReadLen.begin(), sample_ReadLen.end());
-		ReadLen=sample_ReadLen[(int)sample_ReadLen.size()/2];
-	}
-	else
-		cout<<"Cannot open bamfile!"<<endl;
-	return SBamrecord;
-};
-
-SBamrecord_t BuildMainSBamRecord(const std::map<string,int> & RefTable, string bamfile){
 	vector<uint16_t> sample_ReadLen; sample_ReadLen.reserve(5);
-	SBamrecord_t SBamrecord; SBamrecord.reserve(66536);
+	SBamrecord.clear();
+	SBamrecord.reserve(66536);
 	SBamrecord_t newSBamrecord;
 	BamReader bamreader; bamreader.Open(bamfile);
 	if(bamreader.IsOpen()){
 		BamAlignment record;
 		while(bamreader.GetNextAlignment(record)){
-			if(record.IsMapped() && !record.IsDuplicate() && record.MapQuality>=Min_MapQual){
+			if(record.IsMapped() && !record.IsDuplicate()){
 				ReadRec_t tmp(record);
 				SBamrecord.push_back(tmp);
 				if(sample_ReadLen.size()<sample_ReadLen.capacity())
@@ -469,88 +384,29 @@ SBamrecord_t BuildMainSBamRecord(const std::map<string,int> & RefTable, string b
 			}
 		}
 		newSBamrecord.reserve(newSBamrecord.size());
-		for(SBamrecord_t::iterator it=newSBamrecord.begin();it!=newSBamrecord.end();it++)
+		for(SBamrecord_t::iterator it=newSBamrecord.begin(); it!=newSBamrecord.end(); it++)
 			it->SortbyReadPos();
-		cout<<"Finish building bam record\tsize="<<newSBamrecord.size()<<endl;
-
 		// infer read length
 		sort(sample_ReadLen.begin(), sample_ReadLen.end());
 		ReadLen=sample_ReadLen[(int)sample_ReadLen.size()/2];
-	}
-	else
-		cout<<"Cannot open bamfile!"<<endl;
-	bamreader.Close();
-	return newSBamrecord;
-};
-
-SBamrecord_t BuildChimericSBamRecord(SBamrecord_t& SBamrecord, const std::map<string,int> & RefTable, string bamfile){
-	SBamrecord_t tmpBamrecord; tmpBamrecord.reserve(66536);
-	SBamrecord_t newSBamrecord;
-	BamReader bamreader; bamreader.Open(bamfile);
-	if(bamreader.IsOpen()){
-		BamAlignment record;
-		while(bamreader.GetNextAlignment(record)){
-			if(record.IsMapped() && !record.IsDuplicate()){
-				ReadRec_t tmp(record);
-				tmpBamrecord.push_back(tmp);
-				if(tmpBamrecord.capacity()==tmpBamrecord.size())
-					tmpBamrecord.reserve(tmpBamrecord.size()*2);
-			}
-		}
-		tmpBamrecord.reserve(tmpBamrecord.size());
-		sort(tmpBamrecord.begin(), tmpBamrecord.end());
-		newSBamrecord.reserve(tmpBamrecord.size());
-		for(SBamrecord_t::iterator it=tmpBamrecord.begin();it!=tmpBamrecord.end();it++){
-			if(newSBamrecord.size()==0 || it->Qname!=newSBamrecord.back().Qname)
-				newSBamrecord.push_back((*it));
-			else{
-				if(newSBamrecord.back().FirstTotalLen==0 && it->FirstTotalLen!=0){
-					newSBamrecord.back().FirstTotalLen=it->FirstTotalLen;
-					newSBamrecord.back().FirstLowPhred=it->FirstLowPhred;
-				}
-				if(newSBamrecord.back().SecondTotalLen==0 && it->SecondTotalLen!=0){
-					newSBamrecord.back().SecondTotalLen=it->SecondTotalLen;
-					newSBamrecord.back().SecondLowPhred=it->SecondLowPhred;
-				}
-				for(vector<SingleBamRec_t>::iterator itsingle=it->FirstRead.begin(); itsingle!=it->FirstRead.end(); itsingle++)
-					newSBamrecord.back().FirstRead.push_back(*itsingle);
-				for(vector<SingleBamRec_t>::iterator itsingle=it->SecondMate.begin(); itsingle!=it->SecondMate.end(); itsingle++)
-					newSBamrecord.back().SecondMate.push_back(*itsingle);
-			}
-		}
-		newSBamrecord.reserve(newSBamrecord.size());
-		tmpBamrecord.clear(); tmpBamrecord.reserve((int)SBamrecord.size()+(int)newSBamrecord.size());
-		SBamrecord_t::iterator itold=SBamrecord.begin();
-		for(SBamrecord_t::iterator it=newSBamrecord.begin();it!=newSBamrecord.end();it++){
-			it->SortbyReadPos();
-			for(; itold!=SBamrecord.end() && itold->Qname<it->Qname; itold++)
-				tmpBamrecord.push_back((*itold));
-			if(itold!=SBamrecord.end() && itold->Qname==it->Qname){
-				if(itold->ReadCoverageGap()>it->ReadCoverageGap())
-					tmpBamrecord.push_back(*it);
-				else
-					tmpBamrecord.push_back(*itold);
-				itold++;
-			}
-			else
-				tmpBamrecord.push_back(*it);
-		}
-		for(; itold!=SBamrecord.end(); itold++)
-			tmpBamrecord.push_back(*itold);
+		bamreader.Close();
 	}
 	clock_t starttime=clock();
-	sort(tmpBamrecord.begin(), tmpBamrecord.end(), ReadRec_t::FrontSmallerThan);
+	sort(newSBamrecord.begin(), newSBamrecord.end(), ReadRec_t::FrontSmallerThan);
+	time(&CurrentTime);
+	CurrentTimeStr=ctime(&CurrentTime);
+	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] "<<"Finish sorting Chimeric bam reads."<<endl;
 
 	// remove PCR duplicates
-	newSBamrecord.clear();
-	for(SBamrecord_t::iterator it=tmpBamrecord.begin(); it!=tmpBamrecord.end(); it++){
-		if(newSBamrecord.size()==0)
-			newSBamrecord.push_back(*it);
-		else if(it->FirstRead.front().RefID!=newSBamrecord.back().FirstRead.front().RefID || it->FirstRead.front().RefPos!=newSBamrecord.back().FirstRead.front().RefPos)
-			newSBamrecord.push_back(*it);
+	SBamrecord.clear();
+	for(SBamrecord_t::iterator it=newSBamrecord.begin(); it!=newSBamrecord.end(); it++){
+		if(SBamrecord.size()==0)
+			SBamrecord.push_back(*it);
+		else if(it->FirstRead.front().RefID!=SBamrecord.back().FirstRead.front().RefID || it->FirstRead.front().RefPos!=SBamrecord.back().FirstRead.front().RefPos)
+			SBamrecord.push_back(*it);
 		else{
 			bool isdup=false;
-			for(SBamrecord_t::reverse_iterator it2=newSBamrecord.rbegin(); it2!=newSBamrecord.rend(); it2++){
+			for(SBamrecord_t::reverse_iterator it2=SBamrecord.rbegin(); it2!=SBamrecord.rend(); it2++){
 				if(it->FirstRead.front().RefID!=it2->FirstRead.front().RefID || it->FirstRead.front().RefPos!=it2->FirstRead.front().RefPos)
 					break;
 				if(ReadRec_t::Equal(*it, *it2)){
@@ -559,11 +415,12 @@ SBamrecord_t BuildChimericSBamRecord(SBamrecord_t& SBamrecord, const std::map<st
 				}
 			}
 			if(!isdup)
-				newSBamrecord.push_back(*it);
+				SBamrecord.push_back(*it);
 		}
 	}
-	cout<<"sorting time="<<(1.0*(clock()-starttime)/CLOCKS_PER_SEC)<<endl;
-	return newSBamrecord;
+	time(&CurrentTime);
+	CurrentTimeStr=ctime(&CurrentTime);
+	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] "<<"Finish removing PCR duplicates."<<endl;
 };
 
 int AlignmentStat(const SBamrecord_t& SBamrecord){

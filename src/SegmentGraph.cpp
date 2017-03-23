@@ -1,11 +1,13 @@
 #include "SegmentGraph.h"
 
-using namespace std;
-
 void ReverseComplement(string::iterator itbegin, string::iterator itend){
 	for(string::iterator it=itbegin; it!=itend; it++)
 		*it=Nucleotide[toupper(*it)];
 	std::reverse(itbegin, itend);
+};
+
+bool MinHeapComp(const SingleBamRec_t& lhs, const SingleBamRec_t& rhs){
+    return !(lhs<rhs);
 };
 
 pair<int,int> ExtremeValue(vector<int>::iterator itbegin, vector<int>::iterator itend){
@@ -19,9 +21,9 @@ pair<int,int> ExtremeValue(vector<int>::iterator itbegin, vector<int>::iterator 
 	return x;
 };
 
-SegmentGraph_t::SegmentGraph_t(const vector<int>& RefLength, SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node){
-	BuildNode(RefLength, SBamrecord);
-	BuildEdges(SBamrecord, Read_Node);
+SegmentGraph_t::SegmentGraph_t(const vector<int>& RefLength, SBamrecord_t& Chimrecord, string ConcordBamfile){
+	BuildNode(RefLength, Chimrecord, ConcordBamfile);
+	BuildEdges(Chimrecord, ConcordBamfile);
 	FilterbyWeight();
 	FilterbyInterleaving();
 	FilterEdges();
@@ -76,18 +78,14 @@ bool SegmentGraph_t::IsDiscordant(Edge_t* edge){
 	return false;
 };
 
-void SegmentGraph_t::BuildNode(const vector<int>& RefLength, SBamrecord_t& SBamrecord){
+void SegmentGraph_t::BuildNode(const vector<int>& RefLength, SBamrecord_t& Chimrecord, string ConcordBamfile){
 	time_t CurrentTime;
 	string CurrentTimeStr;
 	vector< pair<int,int> > PartAlignPos;
 	PartAlignPos.resize(RefLength.size());
-	vector<SingleBamRec_t> bamdiscordant, bamall;
-	bamdiscordant.reserve(SBamrecord.size()); bamall.reserve(SBamrecord.size()*3);
-	for(vector<ReadRec_t>::const_iterator it=SBamrecord.begin(); it!=SBamrecord.end(); it++){
-		for(vector<SingleBamRec_t>::const_iterator itsingle=it->FirstRead.begin(); itsingle!=it->FirstRead.end(); itsingle++)
-			bamall.push_back(*itsingle);
-		for(vector<SingleBamRec_t>::const_iterator itsingle=it->SecondMate.begin(); itsingle!=it->SecondMate.end(); itsingle++)
-			bamall.push_back(*itsingle);
+	vector<SingleBamRec_t> bamdiscordant;
+	bamdiscordant.reserve(Chimrecord.size());
+	for(vector<ReadRec_t>::const_iterator it=Chimrecord.begin(); it!=Chimrecord.end(); it++){
 		if(it->IsEndDiscordant(true) || it->IsEndDiscordant(false) || it->IsSingleAnchored() || it->IsPairDiscordant()){
 			for(vector<SingleBamRec_t>::const_iterator itsingle=it->FirstRead.begin(); itsingle!=it->FirstRead.end(); itsingle++)
 				bamdiscordant.push_back(*itsingle);
@@ -143,180 +141,342 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, SBamrecord_t& SBamr
 		}
 	}
 	sort(PartAlignPos.begin(), PartAlignPos.end(), [](pair<int,int> a, pair<int,int> b){if(a.first==b.first) return a.second<b.second; else return a.first<b.first;});
-	bamdiscordant.reserve(bamdiscordant.size()); bamall.reserve(bamall.size());
+	bamdiscordant.reserve(bamdiscordant.size());
 	sort(bamdiscordant.begin(), bamdiscordant.end());
-	sort(bamall.begin(), bamall.end());
 	time(&CurrentTime);
 	CurrentTimeStr=ctime(&CurrentTime);
-	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] "<<"Building nodes. |bamall|="<<bamall.size()<<" |bamdiscordant|="<<bamdiscordant.size()<<endl;
+	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] "<<"Building nodes. |bamdiscordant|="<<bamdiscordant.size()<<endl;
 	// extend bamdiscordant to build initial nodes
 	vector<SingleBamRec_t>::const_iterator itdisstart=bamdiscordant.cbegin();
 	vector<SingleBamRec_t>::const_iterator itdisend=bamdiscordant.cbegin();
 	vector<SingleBamRec_t>::const_iterator itdiscurrent;
-	vector<SingleBamRec_t>::const_iterator itallstart=bamall.cbegin();
-	vector<SingleBamRec_t>::const_iterator itallend=bamall.cbegin();
-	vector<SingleBamRec_t>::const_iterator itallcurrent;
 	vector< pair<int,int> >::iterator itpartstart=PartAlignPos.begin();
 	vector< pair<int,int> >::iterator itpartend=PartAlignPos.begin();
 	vector< pair<int,int> >::iterator itpartcurrent;
+	vector< pair<int, pair<int,int> > > ReadsMain; ReadsMain.reserve(65536);
+	vector< pair<int, pair<int,int> > > ReadsOther; ReadsOther.reserve(65536);
+	vector<SingleBamRec_t> ConcordRest;
+	make_heap(ConcordRest.begin(), ConcordRest.end(), MinHeapComp);
+	vector<SingleBamRec_t> ConcordantCluster; ConcordantCluster.reserve(65536);
+	int offsetConcordantCluster=0;
+	vector<SingleBamRec_t> PartialAlignCluster; PartialAlignCluster.reserve(65536);
+	int offsetPartialAlignCluster=0;
 	int thresh=3;
 	int prev0CovPos;
-	int disrightmost, allrightmost;
+	int disChr=0, otherChr=0, nextdisChr=0;
+	int disrightmost=0, otherrightmost=0, nextdisrightmost=0;
 	int markedNodeStart=-1, markedNodeChr=-1;
-	while(itdisstart!=bamdiscordant.cend()){
-		disrightmost=itdisstart->RefPos+itdisstart->MatchRef;
-		for(itdisend=itdisstart; itdisend!=bamdiscordant.cend() && itdisend->RefID==itdisstart->RefID && itdisend->RefPos<disrightmost+ReadLen; itdisend++){
-			disrightmost = (disrightmost>itdisend->RefPos+itdisend->MatchRef)?disrightmost:(itdisend->RefPos+itdisend->MatchRef);
-		}
-		for(; itallstart!=bamall.cend() && (itallstart->RefID<itdisstart->RefID || (itallstart->RefID==itdisstart->RefID && vNodes.size()!=0 && vNodes.back().Chr==itdisstart->RefID && itallstart->RefPos+itallstart->MatchRef<vNodes.back().Position+vNodes.back().Length)); itallstart++){}
-		prev0CovPos=itallstart->RefPos;
-		allrightmost=itallstart->RefPos+itallstart->MatchRef;
-		for(; itallstart!=bamall.cend() && itallstart->RefPos+itallstart->MatchRef+ReadLen<itdisstart->RefPos; itallstart++){
-			if(itallstart->RefPos>allrightmost)
-				prev0CovPos=itallstart->RefPos;
-			allrightmost = (allrightmost>itallstart->RefPos+itallstart->MatchRef)?allrightmost:(itallstart->RefPos+itallstart->MatchRef);
-		}
-		if(itallstart->RefPos>allrightmost)
-			prev0CovPos=itallstart->RefPos;
-		for(itallend=itallstart; itallend!=bamall.cend() && itallend->RefID==itdisstart->RefID && itallend->RefPos<disrightmost+ReadLen; itallend++){
-			allrightmost = (allrightmost>itallend->RefPos+itallend->MatchRef)?allrightmost:(itallend->RefPos+itallend->MatchRef);
-		}
-		for(; itpartstart!=PartAlignPos.end() && (itpartstart->first<itdisstart->RefID || (itpartstart->first==itdisstart->RefID && itpartstart->second+ReadLen<itdisstart->RefPos)); itpartstart++){}
-		for(itpartend=itpartstart; itpartend!=PartAlignPos.end() && itpartend->first==itdisstart->RefID && itpartend->second<disrightmost+ReadLen; itpartend++){}
+	ReadRec_t lastreadrec;
+	BamReader bamreader; bamreader.Open(ConcordBamfile);
+	if(bamreader.IsOpen()){
+		BamAlignment record;
+		while(bamreader.GetNextAlignment(record)){
+			bool XAtag=record.HasTag("XA");
+			bool IHtag=record.HasTag("IH");
+			int IHtagvalue=0;
+			if(IHtag)
+				record.GetTag("IH", IHtagvalue);
+			if(XAtag || IHtagvalue>1 || record.MapQuality<Min_MapQual || record.IsDuplicate() || !record.IsMapped() || record.RefID==-1)
+				continue;
+			ReadRec_t readrec(record);
+			ReadRec_t tmpreadrec=readrec;
+			tmpreadrec.SortbyReadPos();
+			if(record.IsFirstMate() && record.IsMateMapped() && record.MateRefID!=-1){
+				SingleBamRec_t tmp(record.MateRefID, record.MatePosition, 0, 15, 15, 60, record.IsMateReverseStrand(), false);
+				tmpreadrec.SecondMate.push_back(tmp);
+			}
+			else if(!record.IsFirstMate() && record.IsMateMapped() && record.MateRefID!=-1){
+				SingleBamRec_t tmp(record.MateRefID, record.MatePosition, 0, 15, 15, 60, record.IsMateReverseStrand(), false);
+				tmpreadrec.FirstRead.push_back(tmp);
+			}
+			if(ReadRec_t::Equal(lastreadrec, tmpreadrec))
+				continue;
+			else
+				lastreadrec=tmpreadrec;
 
-		int curEndPos=0, curStartPos=(prev0CovPos>markedNodeStart)?prev0CovPos:markedNodeStart;
-		int disStartPos=-1, disEndPos=-1, disCount=-1;
-		bool isClusternSplit=false;
-		while(itdisstart!=itdisend){
-			if(disStartPos!=-1 && !isClusternSplit && disCount>min(5.0, 4.0*(disEndPos-disStartPos)/ReadLen)){
-				if(vNodes.size()!=0 && vNodes.back().Chr==itdisstart->RefID && disEndPos-vNodes.back().Position-vNodes.back().Length<thresh*20)
-					vNodes.back().Length+=disEndPos-vNodes.back().Position-vNodes.back().Length;
-				else{
-					Node_t tmp(itdisstart->RefID, disStartPos, disEndPos-disStartPos);
-					vNodes.push_back(tmp);
-				}
-				curStartPos=disEndPos; curEndPos=disEndPos;
-				markedNodeStart=disEndPos; markedNodeChr=itdisstart->RefID;
+			if(record.IsFirstMate()){
+				vector<SingleBamRec_t>::iterator it=readrec.FirstRead.begin();
+				if(ReadsMain.size()!=0 && !(ReadsMain.back().first==it->RefID && (ReadsMain.back().second).first<=it->RefPos) && !(ReadsMain.back().first<it->RefID))
+					cout<<ReadsMain.back().first<<"\t"<<(ReadsMain.back().second).first<<"\t"<<(ReadsMain.back().second).second<<endl;
+				ReadsMain.push_back(make_pair(it->RefID, make_pair(it->RefPos, it->MatchRef)));
+				it++;
+				for(; it!=readrec.FirstRead.end(); it++)
+					ReadsOther.push_back(make_pair(it->RefID, make_pair(it->RefPos, it->MatchRef)));
 			}
-			isClusternSplit=false;
-			vector<int> MarginPositions;
-			for(itdiscurrent=itdisstart; itdiscurrent!=itdisend; itdiscurrent++){
-				MarginPositions.push_back(itdiscurrent->RefPos); MarginPositions.push_back(itdiscurrent->RefPos+itdiscurrent->MatchRef);
-				curEndPos=(curEndPos>MarginPositions.back())?curEndPos:MarginPositions.back();
-				if((itdiscurrent+1)!=itdisend){
-					if((itdiscurrent+1)->RefPos>itdiscurrent->RefPos+itdiscurrent->MatchRef)
-						break;
-				}
-			}
-			disStartPos=max(curStartPos, itdisstart->RefPos);
-			disEndPos=curEndPos;
-			disCount=distance(itdisstart, itdiscurrent);
-			if(itdiscurrent!=itdisend){
-				for(itdiscurrent++; itdiscurrent!=itdisend && itdiscurrent->RefPos<curEndPos+thresh; itdiscurrent++){
-					MarginPositions.push_back(itdiscurrent->RefPos); MarginPositions.push_back(itdiscurrent->RefPos+itdiscurrent->MatchRef);
-				}
-			}
-			for(itpartcurrent=itpartstart; itpartcurrent!=itpartend && itpartcurrent->second<curEndPos+thresh; itpartcurrent++){
-				MarginPositions.push_back(itpartcurrent->second);
-			}
-			sort(MarginPositions.begin(), MarginPositions.end());
-			int lastCurser=-1, lastSupport=0;
-			for(vector<int>::iterator itbreak=MarginPositions.begin(); itbreak!=MarginPositions.end(); itbreak++){
-				if(vNodes.size()!=0 && vNodes.back().Chr==itdisstart->RefID && (*itbreak)-vNodes.back().Position-vNodes.back().Length<thresh*20)
-					continue;
-				vector<int>::iterator itbreaknext=itbreak, itbreak2;
-				int srsupport=0, peleftfor=0, perightrev=0;
-				for(itbreak2=MarginPositions.begin(); itbreak2!=MarginPositions.end() && (*itbreak2)<(*itbreak)+thresh; itbreak2++){
-					if(abs((*itbreak)-(*itbreak2))<thresh)
-						srsupport++;
-				}
-				for(itdiscurrent=itdisstart; itdiscurrent!=itdisend; itdiscurrent++){
-					if(itdiscurrent->RefPos+itdiscurrent->MatchRef<(*itbreak) && itdiscurrent->RefPos+itdiscurrent->MatchRef>(*itbreak)-ReadLen && !itdiscurrent->IsReverse)
-						peleftfor++;
-					else if(itdiscurrent->RefPos>(*itbreak) && itdiscurrent->RefPos<(*itbreak)+ReadLen && itdiscurrent->IsReverse)
-						perightrev++;
-				}
-				if(srsupport>3 || srsupport+peleftfor>4 || srsupport+perightrev>4){ // it is a cluster, compare with coverage to decide whether node ends here
-					int coverage=0;
-					for(itallcurrent=itallstart; itallcurrent!=itallend; itallcurrent++){
-						if(itallcurrent->RefPos+itallcurrent->MatchRef>=(*itbreak)+thresh && itallcurrent->RefPos<(*itbreak)-thresh) // aligner are trying to extend match as much as possible, so use thresh
-							coverage++;
-					}
-					if(srsupport>max(coverage-srsupport, 0)+2){
-						if(lastCurser==-1 && (*itbreak)-curStartPos<thresh*20){
-							markedNodeStart=curStartPos; markedNodeChr=itdisstart->RefID;
-						}
-						else if((lastCurser==-1 || (*itbreak)-lastCurser<thresh*20) && max(srsupport+peleftfor, srsupport+perightrev)>lastSupport){ // if this breakpoint is near enough to the last, only keep 1, this or last based on support
-							lastCurser=(*itbreak); lastSupport=max(srsupport+peleftfor, srsupport+perightrev);
-						}
-						else if((*itbreak)-lastCurser>=thresh*20){
-							isClusternSplit=true;
-							Node_t tmp(itdisstart->RefID, curStartPos, lastCurser-curStartPos);
-							vNodes.push_back(tmp);
-							curStartPos=lastCurser; curEndPos=lastCurser;
-							markedNodeStart=lastCurser; markedNodeChr=tmp.Chr;
-							break;
-						}
-					}
-				}
-				for(itbreaknext=itbreak; itbreaknext!=MarginPositions.end() && (*itbreaknext)==(*itbreak); itbreaknext++){}
-				if(itbreaknext!=MarginPositions.end()){
-					itbreak=itbreaknext; itbreak--;
-				}
-				else
-					break;
-			}
-			if(lastCurser!=-1 && !isClusternSplit){
-				isClusternSplit=true;
-				Node_t tmp(itdisstart->RefID, curStartPos, lastCurser-curStartPos);
-				vNodes.push_back(tmp);
-				curStartPos=lastCurser; curEndPos=lastCurser;
-				markedNodeStart=lastCurser; markedNodeChr=tmp.Chr;
-			}
-			while(itdisstart!=itdisend && itdisstart->RefPos+itdisstart->MatchRef<=curEndPos)
-				itdisstart++;
-		}
-		if(disStartPos!=-1 && !isClusternSplit && disCount>min(5.0, 4.0*(disEndPos-disStartPos)/ReadLen)){
-			if(vNodes.size()!=0 && vNodes.back().Chr==(itdisend-1)->RefID && disEndPos-vNodes.back().Position-vNodes.back().Length<thresh*20)
-				vNodes.back().Length+=disEndPos-vNodes.back().Position-vNodes.back().Length;
 			else{
-				Node_t tmp((itdisend-1)->RefID, disStartPos, disEndPos-disStartPos);
-				vNodes.push_back(tmp);
+				vector<SingleBamRec_t>::iterator it=readrec.SecondMate.begin();
+				if(ReadsMain.size()!=0 && !(ReadsMain.back().first==it->RefID && (ReadsMain.back().second).first<=it->RefPos) && !(ReadsMain.back().first<it->RefID))
+					cout<<ReadsMain.back().first<<"\t"<<(ReadsMain.back().second).first<<"\t"<<(ReadsMain.back().second).second<<endl;
+				ReadsMain.push_back(make_pair(it->RefID, make_pair(it->RefPos, it->MatchRef)));
+				it++;
+				for(; it!=readrec.SecondMate.end(); it++)
+					ReadsOther.push_back(make_pair(it->RefID, make_pair(it->RefPos, it->MatchRef)));
 			}
-			curStartPos=disEndPos; curEndPos=disEndPos;
-			markedNodeStart=disEndPos; markedNodeChr=(itdisend-1)->RefID;
-		}
-
-		for(itallend=itallstart; itallend!=bamall.cend() && itallend->RefID==(itdisend-1)->RefID; itallend++){
-			if((itdisend-1)->RefID==itdisend->RefID && itallend->RefPos+itallend->MatchRef+ReadLen>=itdisend->RefPos)
+			if(ReadsMain.size()==ReadsMain.capacity())
+				ReadsMain.reserve(ReadsMain.size()*2);
+			if(ReadsOther.size()==ReadsOther.capacity())
+				ReadsOther.reserve(ReadsOther.size()*2);
+			if(itdisstart==bamdiscordant.cend())
 				break;
-			else if(itallend->RefPos>allrightmost){
-				if(markedNodeStart!=-1){
-					if(allrightmost>markedNodeStart && allrightmost-markedNodeStart<thresh*20 && vNodes.size()>0 && markedNodeStart==vNodes.back().Position+vNodes.back().Length){
-						vNodes.back().Length+=allrightmost-markedNodeStart;
+			if(distance(itdisstart, itdisend)<=0 && record.RefID==itdisstart->RefID){
+				if(record.Position+ReadLen>=itdisstart->RefPos){
+					disrightmost=nextdisrightmost; disChr=nextdisChr;
+					nextdisrightmost=itdisstart->RefPos+itdisstart->MatchRef;
+					for(itdisend=itdisstart; itdisend!=bamdiscordant.cend() && itdisend->RefID==itdisstart->RefID && itdisend->RefPos<nextdisrightmost+ReadLen; itdisend++){
+						nextdisrightmost=(nextdisrightmost>itdisend->RefPos+itdisend->MatchRef)?nextdisrightmost:(itdisend->RefPos+itdisend->MatchRef);
+						nextdisChr=itdisend->RefID;
 					}
-					else if(allrightmost>markedNodeStart && allrightmost-markedNodeStart>=thresh*20){
-						Node_t tmp(markedNodeChr, markedNodeStart, allrightmost-markedNodeStart);
+				}
+			}
+			if(itdisstart==bamdiscordant.cbegin())
+				prev0CovPos=(bamdiscordant.front().RefPos<record.Position || bamdiscordant.front().RefID<record.RefID)?bamdiscordant.front().RefPos:record.Position;
+
+			while(itdisstart!=bamdiscordant.cend() && (itdisstart->RefID<record.RefID || (itdisstart->RefID==record.RefID && nextdisrightmost<record.Position))){
+				while(ConcordRest.size()!=0 && (ConcordRest.front().RefID<itdisstart->RefID || (ConcordRest.front().RefID==itdisstart->RefID && ConcordRest.front().RefPos<itdisstart->RefPos-ReadLen))){
+					pop_heap(ConcordRest.begin(), ConcordRest.end(), MinHeapComp); ConcordRest.pop_back();
+				}
+				if(ConcordantCluster.size()!=0 && (ConcordantCluster.back().RefPos+ConcordantCluster.back().MatchRef+ReadLen<itdisstart->RefPos || ConcordantCluster.back().RefID!=itdisstart->RefID) && record.Position>nextdisrightmost)
+					prev0CovPos=itdisstart->RefPos;
+
+				for(; itpartstart!=PartAlignPos.end() && (itpartstart->first<itdisstart->RefID || (itpartstart->first==itdisstart->RefID && itpartstart->second+ReadLen<itdisstart->RefPos)); itpartstart++){}
+				for(itpartend=itpartstart; itpartend!=PartAlignPos.end() && itpartend->first==itdisstart->RefID && itpartend->second<nextdisrightmost+ReadLen; itpartend++){}
+				
+				int curEndPos=0, curStartPos=(prev0CovPos>markedNodeStart)?prev0CovPos:markedNodeStart;
+				int disStartPos=-1, disEndPos=-1, disCount=-1;
+				bool isClusternSplit=false;
+				while(itdisstart!=itdisend){
+					if(disStartPos!=-1 && !isClusternSplit && disCount>min(5.0, 4.0*(disEndPos-disStartPos)/ReadLen)){
+						if(vNodes.size()!=0 && vNodes.back().Chr==itdisstart->RefID && disEndPos-vNodes.back().Position-vNodes.back().Length<thresh*20)
+							vNodes.back().Length+=disEndPos-vNodes.back().Position-vNodes.back().Length;
+						else{
+							Node_t tmp(itdisstart->RefID, disStartPos, disEndPos-disStartPos);
+							if(vNodes.size()!=0 && vNodes.back().Chr==tmp.Chr && vNodes.back().Position+vNodes.back().Length>tmp.Position)
+								cout<<(vNodes.back().Position+vNodes.back().Length)<<"\t"<<tmp.Position<<"\t"<<tmp.Length<<endl;
+							vNodes.push_back(tmp);
+						}
+						curStartPos=disEndPos; curEndPos=disEndPos;
+						markedNodeStart=disEndPos; markedNodeChr=itdisstart->RefID;
+					}
+					isClusternSplit=false;
+					vector<int> MarginPositions;
+					for(itdiscurrent=itdisstart; itdiscurrent!=itdisend; itdiscurrent++){
+						MarginPositions.push_back(itdiscurrent->RefPos); MarginPositions.push_back(itdiscurrent->RefPos+itdiscurrent->MatchRef);
+						curEndPos=(curEndPos>MarginPositions.back())?curEndPos:MarginPositions.back();
+						if((itdiscurrent+1)!=itdisend){
+							if((itdiscurrent+1)->RefPos>itdiscurrent->RefPos+itdiscurrent->MatchRef)
+								break;
+						}
+					}
+					disStartPos=max(curStartPos, itdisstart->RefPos);
+					disEndPos=curEndPos;
+					disCount=distance(itdisstart, itdiscurrent);
+					if(itdiscurrent!=itdisend){
+						for(itdiscurrent++; itdiscurrent!=itdisend && itdiscurrent->RefPos<curEndPos+thresh; itdiscurrent++){
+							MarginPositions.push_back(itdiscurrent->RefPos); MarginPositions.push_back(itdiscurrent->RefPos+itdiscurrent->MatchRef);
+						}
+					}
+					for(itpartcurrent=itpartstart; itpartcurrent!=itpartend && itpartcurrent->second<curEndPos+thresh; itpartcurrent++){
+						MarginPositions.push_back(itpartcurrent->second);
+					}
+					for(int i=offsetPartialAlignCluster; i!=PartialAlignCluster.size(); i++){
+						const SingleBamRec_t& it=PartialAlignCluster[i];
+						if(it.RefID==itdisstart->RefID && it.ReadPos>15 && it.RefPos>MarginPositions.front()-thresh && it.RefPos<curEndPos+thresh){
+							if(it.IsReverse && it.RefPos+it.MatchRef>MarginPositions.front()-thresh && it.RefPos+it.MatchRef<curEndPos+thresh)
+								MarginPositions.push_back(it.RefPos+it.MatchRef);
+							else if(!it.IsReverse && it.RefPos>MarginPositions.front()-thresh && it.RefPos<curEndPos+thresh)
+								MarginPositions.push_back(it.RefPos);
+						}
+						else if(it.RefID==itdisstart->RefID){
+							if(it.IsReverse && it.RefPos>MarginPositions.front()-thresh && it.RefPos<curEndPos+thresh)
+								MarginPositions.push_back(it.RefPos);
+							else if(!it.IsReverse && it.RefPos+it.MatchRef>MarginPositions.front()-thresh && it.RefPos+it.MatchRef<curEndPos+thresh)
+								MarginPositions.push_back(it.RefPos+it.MatchRef);
+						}
+					}
+					sort(MarginPositions.begin(), MarginPositions.end());
+					int lastCurser=-1, lastSupport=0;
+					for(vector<int>::iterator itbreak=MarginPositions.begin(); itbreak!=MarginPositions.end(); itbreak++){
+						if(vNodes.size()!=0 && vNodes.back().Chr==itdisstart->RefID && (*itbreak)-vNodes.back().Position-vNodes.back().Length<thresh*20)
+							continue;
+						vector<int>::iterator itbreaknext=itbreak, itbreak2;
+						int srsupport=0, peleftfor=0, perightrev=0;
+						for(itbreak2=MarginPositions.begin(); itbreak2!=MarginPositions.end() && (*itbreak2)<(*itbreak)+thresh; itbreak2++){
+							if(abs((*itbreak)-(*itbreak2))<thresh)
+								srsupport++;
+						}
+						for(itdiscurrent=itdisstart; itdiscurrent!=itdisend; itdiscurrent++){
+							if(itdiscurrent->RefPos+itdiscurrent->MatchRef<(*itbreak) && itdiscurrent->RefPos+itdiscurrent->MatchRef>(*itbreak)-ReadLen && !itdiscurrent->IsReverse)
+								peleftfor++;
+							else if(itdiscurrent->RefPos>(*itbreak) && itdiscurrent->RefPos<(*itbreak)+ReadLen && itdiscurrent->IsReverse)
+								perightrev++;
+						}
+						if(srsupport>3 || srsupport+peleftfor>4 || srsupport+perightrev>4){ // it is a cluster, compare with coverage to decide whether node ends here
+							int coverage=0;
+							for(int i=offsetConcordantCluster; i<ConcordantCluster.size(); i++){
+								const SingleBamRec_t& it=ConcordantCluster[i];
+								if(it.RefID==itdisstart->RefID && it.RefPos+it.MatchRef>=(*itbreak)+thresh && it.RefPos<(*itbreak)-thresh) // aligner are trying to extend match as much as possible, so use thresh
+									coverage++;
+							}
+							for(itdiscurrent=itdisstart; itdiscurrent!=itdisend; itdiscurrent++)
+								if(itdiscurrent->RefID==itdisstart->RefID && itdiscurrent->RefPos+itdiscurrent->MatchRef>=(*itbreak)+thresh && itdiscurrent->RefPos<(*itbreak)-thresh)
+									coverage++;
+							for(int i=offsetPartialAlignCluster; i!=PartialAlignCluster.size(); i++){
+								const SingleBamRec_t& it=PartialAlignCluster[i];
+								if(it.RefID==itdisstart->RefID && it.RefPos+it.MatchRef>=(*itbreak)+thresh && it.RefPos<(*itbreak)-thresh)
+									coverage++;
+							}
+							if(srsupport>max(coverage-srsupport, 0)+2){
+								for(int i=0; i<ConcordRest.size(); i++)
+									if(ConcordRest[i].RefID==itdisstart->RefID && ConcordRest[i].RefPos+ConcordRest[i].MatchRef>=(*itbreak)+thresh && ConcordRest[i].RefPos<(*itbreak)-thresh)
+										coverage++;
+							}
+							if(srsupport>max(coverage-srsupport, 0)+2){
+								if(lastCurser==-1 && (*itbreak)-curStartPos<thresh*20){
+									markedNodeStart=curStartPos; markedNodeChr=itdisstart->RefID;
+								}
+								else if((lastCurser==-1 || (*itbreak)-lastCurser<thresh*20) && max(srsupport+peleftfor, srsupport+perightrev)>lastSupport){ // if this breakpoint is near enough to the last, only keep 1, this or last based on support
+									lastCurser=(*itbreak); lastSupport=max(srsupport+peleftfor, srsupport+perightrev);
+								}
+								else if((*itbreak)-lastCurser>=thresh*20){
+									isClusternSplit=true;
+									Node_t tmp(itdisstart->RefID, curStartPos, lastCurser-curStartPos);
+									if(vNodes.size()!=0 && vNodes.back().Chr==tmp.Chr && vNodes.back().Position+vNodes.back().Length>tmp.Position)
+										cout<<(vNodes.back().Position+vNodes.back().Length)<<"\t"<<tmp.Position<<"\t"<<tmp.Length<<endl;
+									vNodes.push_back(tmp);
+									curStartPos=lastCurser; curEndPos=lastCurser;
+									markedNodeStart=lastCurser; markedNodeChr=tmp.Chr;
+									break;
+								}
+							}
+						}
+						for(itbreaknext=itbreak; itbreaknext!=MarginPositions.end() && (*itbreaknext)==(*itbreak); itbreaknext++){}
+						if(itbreaknext!=MarginPositions.end()){
+							itbreak=itbreaknext; itbreak--;
+						}
+						else
+							break;
+					}
+					if(lastCurser!=-1 && !isClusternSplit){
+						isClusternSplit=true;
+						Node_t tmp(itdisstart->RefID, curStartPos, lastCurser-curStartPos);
+						if(vNodes.size()!=0 && vNodes.back().Chr==tmp.Chr && vNodes.back().Position+vNodes.back().Length>tmp.Position)
+							cout<<(vNodes.back().Position+vNodes.back().Length)<<"\t"<<tmp.Position<<"\t"<<tmp.Length<<endl;
+						vNodes.push_back(tmp);
+						curStartPos=lastCurser; curEndPos=lastCurser;
+						markedNodeStart=lastCurser; markedNodeChr=tmp.Chr;
+					}
+					while(itdisstart!=itdisend && itdisstart->RefPos+itdisstart->MatchRef<=curEndPos)
+						itdisstart++;
+				}
+				if(disStartPos!=-1 && !isClusternSplit && disCount>min(5.0, 4.0*(disEndPos-disStartPos)/ReadLen)){
+					if(vNodes.size()!=0 && vNodes.back().Chr==(itdisend-1)->RefID && disEndPos-vNodes.back().Position-vNodes.back().Length<thresh*20)
+						vNodes.back().Length+=disEndPos-vNodes.back().Position-vNodes.back().Length;
+					else{
+						Node_t tmp((itdisend-1)->RefID, disStartPos, disEndPos-disStartPos);
+						if(vNodes.size()!=0 && vNodes.back().Chr==tmp.Chr && vNodes.back().Position+vNodes.back().Length>tmp.Position)
+							cout<<(vNodes.back().Position+vNodes.back().Length)<<"\t"<<tmp.Position<<"\t"<<tmp.Length<<endl;
 						vNodes.push_back(tmp);
 					}
-					markedNodeStart=-1; markedNodeChr=-1;
-					break;
+					curStartPos=disEndPos; curEndPos=disEndPos;
+					markedNodeStart=disEndPos; markedNodeChr=(itdisend-1)->RefID;
+				}
+				while(ConcordantCluster.size()>offsetConcordantCluster && (ConcordantCluster[offsetConcordantCluster].RefID!=itdisstart->RefID || ConcordantCluster[offsetConcordantCluster].RefPos+ConcordantCluster[offsetConcordantCluster].MatchRef+ReadLen<itdisstart->RefPos))
+					offsetConcordantCluster++;
+				while(PartialAlignCluster.size()>offsetPartialAlignCluster && (PartialAlignCluster[offsetPartialAlignCluster].RefID!=itdisstart->RefID || PartialAlignCluster[offsetPartialAlignCluster].RefPos+PartialAlignCluster[offsetPartialAlignCluster].MatchRef+ReadLen<itdisstart->RefPos))
+					offsetPartialAlignCluster++;
+				if(distance(itdisstart, itdisend)<=0){
+					disrightmost=nextdisrightmost; disChr=nextdisChr;
+					nextdisrightmost=itdisstart->RefPos+itdisstart->MatchRef;
+					for(itdisend=itdisstart; itdisend!=bamdiscordant.cend() && itdisend->RefID==itdisstart->RefID && itdisend->RefPos<nextdisrightmost+ReadLen; itdisend++){
+						nextdisrightmost=(nextdisrightmost>itdisend->RefPos+itdisend->MatchRef)?nextdisrightmost:(itdisend->RefPos+itdisend->MatchRef);
+						nextdisChr=itdisend->RefID;
+					}
 				}
 			}
-			allrightmost = (allrightmost>itallend->RefPos+itallend->MatchRef)?allrightmost:(itallend->RefPos+itallend->MatchRef);
-		}
-		if(itallend->RefID!=(itdisend-1)->RefID && markedNodeStart!=-1){
-			if(allrightmost>markedNodeStart && allrightmost-markedNodeStart<thresh*20 && vNodes.size()>0 && markedNodeStart==vNodes.back().Position+vNodes.back().Length){
-				vNodes.back().Length+=allrightmost-markedNodeStart;
-			}
-			else if(allrightmost>markedNodeStart && allrightmost-markedNodeStart>=thresh*20){
-				Node_t tmp(markedNodeChr, markedNodeStart, allrightmost-markedNodeStart);
-				vNodes.push_back(tmp);
-			}
-			markedNodeStart=-1; markedNodeChr=-1;
-		}
 
-		itdisstart=itdisend;
+			// check if  it indicates a 0-coverage position
+			bool is0coverage=true;
+			int currightmost=otherrightmost, curChr=0;
+			currightmost=(disChr>otherChr || (disChr==otherChr && disrightmost>otherrightmost))?disrightmost:otherrightmost;
+			curChr=(disChr>otherChr)?disChr:otherChr;
+			is0coverage=(record.RefID!=curChr || record.Position>currightmost+ReadLen);
+			if(is0coverage && markedNodeStart!=-1){
+				if(curChr==markedNodeChr && currightmost>markedNodeStart && currightmost-markedNodeStart<thresh*20 && vNodes.size()>0 && markedNodeStart==vNodes.back().Position+vNodes.back().Length){
+					vNodes.back().Length+=currightmost-markedNodeStart;
+				}
+				else if(curChr==markedNodeChr && currightmost>markedNodeStart && currightmost-markedNodeStart>=thresh*20){
+					Node_t tmp(markedNodeChr, markedNodeStart, currightmost-markedNodeStart);
+					if(vNodes.size()!=0 && vNodes.back().Chr==tmp.Chr && vNodes.back().Position+vNodes.back().Length>tmp.Position)
+						cout<<(vNodes.back().Position+vNodes.back().Length)<<"\t"<<tmp.Position<<"\t"<<tmp.Length<<endl;
+					vNodes.push_back(tmp);
+				}
+				markedNodeStart=-1; markedNodeChr=-1;
+			}
+			if(is0coverage)
+				prev0CovPos=(itdisstart!=bamdiscordant.end() && (itdisstart->RefID<record.RefID || itdisstart->RefPos<record.Position))?itdisstart->RefPos:record.Position;
+
+			// remove irrelavent reads in cluster
+			if(itdisstart==bamdiscordant.cend() || itdisstart->RefID!=ConcordantCluster[offsetConcordantCluster].RefID || itdisstart->RefPos>ConcordantCluster[offsetConcordantCluster].RefPos+ConcordantCluster[offsetConcordantCluster].MatchRef+ReadLen){
+				while(ConcordantCluster.size()>offsetConcordantCluster && (ConcordantCluster[offsetConcordantCluster].RefID!=record.RefID || ConcordantCluster[offsetConcordantCluster].RefPos+ConcordantCluster[offsetConcordantCluster].MatchRef+ReadLen<record.Position))
+					offsetConcordantCluster++;
+				while(PartialAlignCluster.size()>offsetPartialAlignCluster && (PartialAlignCluster[offsetPartialAlignCluster].RefID!=record.RefID || PartialAlignCluster[offsetPartialAlignCluster].RefPos+PartialAlignCluster[offsetPartialAlignCluster].MatchRef+ReadLen<record.Position))
+					offsetPartialAlignCluster++;
+			}
+
+			// push back new reads
+			bool recordconcordant=false;
+			bool recordpartalign=false;
+			if(record.IsMapped() && record.IsMateMapped() && record.MateRefID!=-1 && record.IsReverseStrand() && !record.IsMateReverseStrand() && record.RefID==record.MateRefID && record.Position>=record.MatePosition && record.Position-record.MatePosition<=750000 && record.IsProperPair())
+				recordconcordant=true;
+			else if(record.IsMapped() && record.IsMateMapped() && record.MateRefID!=-1 && !record.IsReverseStrand() && record.IsMateReverseStrand() && record.RefID==record.MateRefID && record.MatePosition>=record.Position && record.MatePosition-record.Position<=750000 && record.IsProperPair())
+				recordconcordant=true;
+			if(recordconcordant){
+				if(otherChr==record.RefID && record.IsFirstMate())
+					otherrightmost=(otherrightmost>readrec.FirstRead.front().RefPos+readrec.FirstRead.front().MatchRef) ? otherrightmost:(readrec.FirstRead.front().RefPos+readrec.FirstRead.front().MatchRef);
+				else if(otherChr==record.RefID && record.IsSecondMate())
+					otherrightmost=(otherrightmost>readrec.SecondMate.front().RefPos+readrec.SecondMate.front().MatchRef) ? otherrightmost:(readrec.SecondMate.front().RefPos+readrec.SecondMate.front().MatchRef);
+				else if(record.IsFirstMate()){
+					otherrightmost=readrec.FirstRead.front().RefPos+readrec.FirstRead.front().MatchRef;
+					otherChr=record.RefID;
+				}
+				else if(record.IsSecondMate()){
+					otherrightmost=readrec.SecondMate.front().RefPos+readrec.SecondMate.front().MatchRef;
+					otherChr=record.RefID;
+				}
+				if(record.IsFirstMate() && readrec.FirstRead.front().ReadPos > 15 && !readrec.FirstLowPhred){
+					PartialAlignCluster.push_back(readrec.FirstRead.front());
+					recordpartalign=true;
+				}
+				else if(record.IsFirstMate() && readrec.FirstTotalLen-readrec.FirstRead.back().ReadPos-readrec.FirstRead.back().MatchRead > 15 && !readrec.FirstLowPhred){
+					PartialAlignCluster.push_back(readrec.FirstRead.front());
+					recordpartalign=true;
+				}
+				if(record.IsSecondMate() && readrec.SecondMate.front().ReadPos > 15 && !readrec.SecondLowPhred){
+					PartialAlignCluster.push_back(readrec.SecondMate.front());
+					recordpartalign=true;
+				}
+				else if(record.IsSecondMate() && readrec.SecondTotalLen-readrec.SecondMate.back().ReadPos-readrec.SecondMate.back().MatchRead > 15 && !readrec.SecondLowPhred){
+					PartialAlignCluster.push_back(readrec.SecondMate.front());
+					recordpartalign=true;
+				}
+				if(!recordpartalign){
+					if(record.IsFirstMate())
+						ConcordantCluster.push_back(readrec.FirstRead.front());
+					else
+						ConcordantCluster.push_back(readrec.SecondMate.front());
+				}
+				if(record.IsFirstMate() && readrec.FirstRead.size()>1)
+					for(int i=1; i<readrec.FirstRead.size(); i++)
+						if(itdisstart!=bamdiscordant.cend() && readrec.FirstRead[i].RefPos>=itdisstart->RefPos-ReadLen){
+							ConcordRest.push_back(readrec.FirstRead[i]); push_heap(ConcordRest.begin(), ConcordRest.end(), MinHeapComp);
+						}
+				if(record.IsSecondMate() && readrec.SecondMate.size()>1)
+					for(int i=1; i<readrec.SecondMate.size(); i++)
+						if(itdisstart!=bamdiscordant.cend() && readrec.SecondMate[i].RefPos>=itdisstart->RefPos-ReadLen){
+							ConcordRest.push_back(readrec.SecondMate[i]); push_heap(ConcordRest.begin(), ConcordRest.end(), MinHeapComp);
+						}
+			}
+		}
 	}
 	time(&CurrentTime);
 	CurrentTimeStr=ctime(&CurrentTime);
@@ -380,7 +540,7 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, SBamrecord_t& SBamr
 	CurrentTimeStr=ctime(&CurrentTime);
 	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Building nodes, finish expanding to whole genome."<<endl;
 	// calculate read count for each node
-	vector<SingleBamRec_t>::const_iterator itall=bamall.cbegin();
+	vector<SingleBamRec_t>::const_iterator itdis=bamdiscordant.cbegin();
 	for(int i=0; i<vNodes.size(); i++){
 		if(i%1000000==0){
 			time(&CurrentTime);
@@ -388,13 +548,60 @@ void SegmentGraph_t::BuildNode(const vector<int>& RefLength, SBamrecord_t& SBamr
 			cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Building nodes, calculating read coverage for node "<<i<<"."<<endl;
 		}
 		int count=0, sumlen=0;
-		for(; itall!=bamall.end() && itall->RefID==vNodes[i].Chr && itall->RefPos<vNodes[i].Position+vNodes[i].Length; itall++)
-			if(itall->RefPos>=vNodes[i].Position && itall->RefPos+itall->MatchRef<=vNodes[i].Position+vNodes[i].Length){
-				count++; sumlen+=itall->MatchRef;
+		for(; itdis!=bamdiscordant.end() && itdis->RefID==vNodes[i].Chr && itdis->RefPos<vNodes[i].Position+vNodes[i].Length; itdis++)
+			if(itdis->RefPos>=vNodes[i].Position && itdis->RefPos+itdis->MatchRef<=vNodes[i].Position+vNodes[i].Length){
+				count++; sumlen+=itdis->MatchRef;
 			}
 		vNodes[i].Support=count;
-		vNodes[i].AvgDepth=1.0*sumlen/vNodes[i].Length;
+		vNodes[i].AvgDepth=sumlen;
 	}
+	sort(ReadsOther.begin(), ReadsOther.end(), [](pair<int, pair<int,int> > a, pair<int, pair<int,int> > b){if(a.first!=b.first) return a.first<b.first; else return (a.second).first<(b.second).first;});
+	if(ReadsMain.size()!=0){
+		vector< pair<int, pair<int,int> > >::iterator it=ReadsMain.begin();
+		for(int i=0; i<vNodes.size(); i++){
+			int covcount=0, covsumlen=0;
+			bool increasenode=false;
+			while(!increasenode && it!=ReadsMain.end()){
+				for(; it!=ReadsMain.end(); it++){
+					if(it->first==vNodes[i].Chr && (it->second).first>=vNodes[i].Position-thresh && (it->second).first+(it->second).second<=vNodes[i].Position+vNodes[i].Length+thresh){
+						covcount++; covsumlen+=(it->second).second;
+					}
+					else if((it->second).first>=vNodes[i].Position+vNodes[i].Length || it->first!=vNodes[i].Chr){
+						increasenode=true;
+						break;
+					}
+				}
+				if(increasenode)
+					break;
+			}
+			vNodes[i].Support+=covcount;
+			vNodes[i].AvgDepth+=covsumlen;
+		}
+	}
+	if(ReadsOther.size()!=0){
+		vector< pair<int, pair<int,int> > >::iterator it=ReadsOther.begin();
+		for(int i=0; i<vNodes.size(); i++){
+			int covcount=0, covsumlen=0;
+			bool increasenode=false;
+			while(!increasenode && it!=ReadsOther.end()){
+				for(; it!=ReadsOther.end(); it++){
+					if(it->first==vNodes[i].Chr && (it->second).first>=vNodes[i].Position-thresh && (it->second).first+(it->second).second<=vNodes[i].Position+vNodes[i].Length+thresh){
+						covcount++; covsumlen+=(it->second).second;
+					}
+					else if((it->second).first>=vNodes[i].Position+vNodes[i].Length || it->first!=vNodes[i].Chr){
+						increasenode=true;
+						break;
+					}
+				}
+				if(increasenode)
+					break;
+			}
+			vNodes[i].Support+=covcount;
+			vNodes[i].AvgDepth+=covsumlen;
+			vNodes[i].AvgDepth=1.0*vNodes[i].AvgDepth/vNodes[i].Length;
+		}
+	}
+	bamreader.Close();
 	time(&CurrentTime);
 	CurrentTimeStr=ctime(&CurrentTime);
 	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Finish calculating reads per node."<<endl;
@@ -587,10 +794,10 @@ vector<int> SegmentGraph_t::LocateRead(vector<int>& singleRead_Node, ReadRec_t& 
 	}
 };
 
-void SegmentGraph_t::RawEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node){
+void SegmentGraph_t::RawEdgesChim(SBamrecord_t& Chimrecord){
 	int firstfrontindex=0, i=0, j=0, splittedcount=0;
 	clock_t starttime=clock();
-	for(vector<ReadRec_t>::iterator it=SBamrecord.begin(); it!=SBamrecord.end(); it++){
+	for(vector<ReadRec_t>::iterator it=Chimrecord.begin(); it!=Chimrecord.end(); it++){
 		if(it->FirstRead.size()==0 && it->SecondMate.size()==0)
 			continue;
 		vector<int> tmpRead_Node=LocateRead(firstfrontindex, *it);
@@ -614,8 +821,8 @@ void SegmentGraph_t::RawEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& R
 					k+=(int)it->FirstRead.size();
 				}
 			}
-		if(distance(SBamrecord.begin(), it)%1000000==0)
-			cout<<distance(SBamrecord.begin(), it)<<"\ttime="<<(1.0*(clock()-starttime)/CLOCKS_PER_SEC)<<endl;
+		if(distance(Chimrecord.begin(), it)%1000000==0)
+			cout<<distance(Chimrecord.begin(), it)<<"\ttime="<<(1.0*(clock()-starttime)/CLOCKS_PER_SEC)<<endl;
 		// edges from FirstRead segments
 		if(it->FirstRead.size()>0){
 			for(int k=0; k<it->FirstRead.size()-1; k++){
@@ -659,17 +866,139 @@ void SegmentGraph_t::RawEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& R
 				}
 			}
 		}
-		Read_Node.push_back(tmpRead_Node);
 	}
-	cout<<"number splitted reads = "<<splittedcount<<endl;
 };
 
-void SegmentGraph_t::BuildEdges(SBamrecord_t& SBamrecord, vector< vector<int> >& Read_Node){
+void SegmentGraph_t::RawEdgesOther(SBamrecord_t& Chimrecord, string ConcordBamfile){
+	time_t CurrentTime;
+	string CurrentTimeStr;
+
+	vector<string> ChimName(Chimrecord.size());
+	for(SBamrecord_t::const_iterator it=Chimrecord.cbegin(); it!=Chimrecord.cend(); it++)
+		ChimName.push_back(it->Qname);
+	sort(ChimName.begin(), ChimName.end());
+	vector<string>::iterator it=unique(ChimName.begin(), ChimName.end());
+	ChimName.resize(distance(ChimName.begin(), it));
+
+	int firstfrontindex=0, i=0, j=0;
+	ReadRec_t lastreadrec;
+	BamReader bamreader;
+	bamreader.Open(ConcordBamfile);
+	if(bamreader.IsOpen()){
+		BamAlignment record;
+		time(&CurrentTime);
+		CurrentTimeStr=ctime(&CurrentTime);
+		cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Starting building edges."<<endl;
+		while(bamreader.GetNextAlignment(record)){
+			// remove multi-aligned reads XXX check GetTag really works!!!
+			bool XAtag=record.HasTag("XA");
+			bool IHtag=record.HasTag("IH");
+			int IHtagvalue=0;
+			if(IHtag)
+				record.GetTag("IH", IHtagvalue);
+			if(XAtag || IHtagvalue>1 || record.IsDuplicate() || record.MapQuality<Min_MapQual || !record.IsMapped() || binary_search(ChimName.begin(), ChimName.end(), record.Name))
+				continue;
+
+			ReadRec_t readrec(record);
+			readrec.SortbyReadPos();
+			if(record.IsFirstMate() && record.IsMateMapped() && record.MateRefID!=-1){
+				SingleBamRec_t tmp(record.MateRefID, record.MatePosition, 0, 15, 15, 60, record.IsMateReverseStrand(), false);
+				readrec.SecondMate.push_back(tmp);
+			}
+			else if(!record.IsFirstMate() && record.IsMateMapped() && record.MateRefID!=-1){
+				SingleBamRec_t tmp(record.MateRefID, record.MatePosition, 0, 15, 15, 60, record.IsMateReverseStrand(), false);
+				readrec.FirstRead.push_back(tmp);
+			}
+			if(ReadRec_t::Equal(lastreadrec, readrec))
+				continue;
+			else
+				lastreadrec=readrec;
+			if((readrec.FirstRead.front().ReadPos <= 15 || readrec.FirstLowPhred) && (readrec.SecondMate.front().ReadPos<=15 || readrec.SecondLowPhred)){ // only consider first mate record, to avoid doubling edge weight.
+				vector<int> tmpRead_Node=LocateRead(firstfrontindex, readrec);
+				if(tmpRead_Node[0]!=-1)
+					firstfrontindex=tmpRead_Node[0];
+				for(int k=0; k<tmpRead_Node.size(); k++)
+					if(tmpRead_Node[k]==-1){
+						i=firstfrontindex;
+						if(k<(int)readrec.FirstRead.size()){
+							for(; i<vNodes.size() && (vNodes[i].Chr<readrec.FirstRead[k].RefID || (vNodes[i].Chr==readrec.FirstRead[k].RefID && vNodes[i].Position+vNodes[i].Length<readrec.FirstRead[k].RefPos)); i++){}
+							for(; i>-1 && (vNodes[i].Chr>readrec.FirstRead[k].RefID || (vNodes[i].Chr==readrec.FirstRead[k].RefID && vNodes[i].Position>readrec.FirstRead[k].RefPos)); i--){}
+							Edge_t tmp(i, false, i+1, true);
+							assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
+							vEdges.push_back(tmp);
+						}
+						else if(k<(int)readrec.FirstRead.size()+(int)readrec.SecondMate.size()){
+							k-=(int)readrec.FirstRead.size();
+							for(; i<vNodes.size() && (vNodes[i].Chr<readrec.SecondMate[k].RefID || (vNodes[i].Chr==readrec.SecondMate[k].RefID && vNodes[i].Position+vNodes[i].Length<readrec.SecondMate[k].RefPos)); i++){}
+							for(; i>-1 && (vNodes[i].Chr>readrec.SecondMate[k].RefID || (vNodes[i].Chr==readrec.SecondMate[k].RefID && vNodes[i].Position>readrec.SecondMate[k].RefPos)); i--){}
+							Edge_t tmp(i, false, i+1, true);
+							assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
+							vEdges.push_back(tmp);
+							k+=(int)readrec.FirstRead.size();
+						}
+					}
+				// edges from FirstRead segments
+				if(readrec.FirstRead.size()>0){
+					for(int k=0; k<readrec.FirstRead.size()-1; k++){
+						i=tmpRead_Node[k]; j=tmpRead_Node[k+1];
+						if(i!=j && i!=-1 && j!=-1){
+							bool tmpHead1=(readrec.FirstRead[k].IsReverse)?true:false, tmpHead2=(readrec.FirstRead[k+1].IsReverse)?false:true;
+							Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
+							assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
+							vEdges.push_back(tmp);
+						}
+					}
+				}
+				// edges from SecondMate segments
+				if(readrec.SecondMate.size()>0){
+					for(int k=0; k<readrec.SecondMate.size()-1; k++){
+						i=tmpRead_Node[(int)readrec.FirstRead.size()+k]; j=tmpRead_Node[(int)readrec.FirstRead.size()+k+1];
+						if(i!=j && i!=-1 && j!=-1){
+							bool tmpHead1=(readrec.SecondMate[k].IsReverse)?true:false, tmpHead2=(readrec.SecondMate[k+1].IsReverse)?false:true;
+							Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
+							assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
+							vEdges.push_back(tmp);
+						}
+					}
+				}
+				// edges from pair ends
+				if(record.IsFirstMate() && readrec.FirstRead.size()>0 && readrec.SecondMate.size()>0){
+					if(!readrec.IsSingleAnchored() && !readrec.IsEndDiscordant(true) && !readrec.IsEndDiscordant(false)){
+						i=tmpRead_Node[(int)readrec.FirstRead.size()-1]; j=tmpRead_Node.back();
+						bool isoverlap=false;
+						for(int k=0; k<readrec.FirstRead.size(); k++)
+							if(j==tmpRead_Node[k])
+								isoverlap=true;
+						for(int k=0; k<readrec.SecondMate.size(); k++)
+							if(i==tmpRead_Node[(int)readrec.FirstRead.size()+k])
+								isoverlap=true;
+						if(i!=j && i!=-1 && j!=-1 && !isoverlap){
+							bool tmpHead1=(readrec.FirstRead.back().IsReverse)?true:false, tmpHead2=(readrec.SecondMate.back().IsReverse)?true:false;
+							Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
+							assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
+							vEdges.push_back(tmp);
+						}
+					}
+				}
+			}
+		}
+		bamreader.Close();
+		time(&CurrentTime);
+		CurrentTimeStr=ctime(&CurrentTime);
+		cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Finish raw edges."<<endl;
+	}
+	time(&CurrentTime);
+	CurrentTimeStr=ctime(&CurrentTime);
+	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Finish filtering edges from multi-aligned reads."<<endl;
+};
+
+void SegmentGraph_t::BuildEdges(SBamrecord_t& Chimrecord, string ConcordBamfile){
 	time_t CurrentTime;
 	string CurrentTimeStr;
 
 	vector<Edge_t> tmpEdges; tmpEdges.reserve(vEdges.size());
-	RawEdges(SBamrecord, Read_Node);
+	RawEdgesChim(Chimrecord);
+	RawEdgesOther(Chimrecord, ConcordBamfile);
 	sort(vEdges.begin(), vEdges.end());
 	for(int i=0; i<vEdges.size(); i++){
 		if(tmpEdges.size()==0 || !(vEdges[i]==tmpEdges.back()))
