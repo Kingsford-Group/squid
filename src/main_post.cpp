@@ -2,7 +2,7 @@
 #include "ReadRec.h"
 #include "BPNode.h"
 #include "BPEdge.h"
-#include "SegmentGraph.h"
+#include "SegmentGraph2.h"
 #include "WriteIO.h"
 #include "Config.h"
 
@@ -20,18 +20,9 @@ int main(int argc, char* argv[]){
 		for(map<string,int>::iterator it=RefTable.begin(); it!=RefTable.end(); it++)
 			cout<<"Reference name "<<it->first<<"\t-->\t"<<it->second<<endl;
 
-		SBamrecord_t Chimrecord;
-		if(Input_Chim_BAM.size()!=0){
-			BuildChimericSBamRecord(Chimrecord, RefTable, Input_Chim_BAM);
-		}
+		SegmentGraph_t SegmentGraph(Input_FASTA);
 
-		SegmentGraph_t SegmentGraph(RefLength, Chimrecord, Input_BAM);
-
-		if(Print_Graph)
-			SegmentGraph.OutputGraph(Output_Prefix+"_graph.txt");
 		vector< vector<int> > Components=SegmentGraph.Ordering();
-		if(Print_Components_Ordering)
-			WriteComponents(Output_Prefix+"_component_pri.txt", Components);
 
 		Components=SegmentGraph.SortComponents(Components);
 		Components=SegmentGraph.MergeSingleton(Components, RefLength);
@@ -45,7 +36,6 @@ int main(int argc, char* argv[]){
 
 		if(Print_Total_Ordering)
 			WriteComponents(Output_Prefix+"_component.txt", Components);
-		WriteBEDPE(Output_Prefix+"_sv.txt", SegmentGraph, Components, Node_NewChr, RefName);
 
 		if(Print_Rearranged_Genome){
 			vector<string> RefSequence;
@@ -54,7 +44,7 @@ int main(int argc, char* argv[]){
 				OutputNewGenome(SegmentGraph, Components, RefSequence, RefName, Output_Prefix+"_genome.fa");
 		}
 
-		/*int concordthresh=50000;
+		int concordthresh=50000;
 		sort(SegmentGraph.vEdges.begin(), SegmentGraph.vEdges.end(),  [](Edge_t a, Edge_t b){return a.Weight>b.Weight;});
 		ofstream output3(Output_Prefix+"_discordantedges.txt", ios::out);
 		output3<<"# ";
@@ -64,7 +54,7 @@ int main(int argc, char* argv[]){
 		output3<<"# Ind1\tNode1\tHead1\tInd2\tNode2\tHead2\tWeight\n";
 		for(int i=0; i<SegmentGraph.vEdges.size(); i++){
 			int ind1=SegmentGraph.vEdges[i].Ind1, ind2=SegmentGraph.vEdges[i].Ind2;
-			if(SegmentGraph.vNodes[ind1].Chr!=SegmentGraph.vNodes[ind2].Chr || (SegmentGraph.vNodes[ind2].Position-SegmentGraph.vNodes[ind1].Position-SegmentGraph.vNodes[ind1].Length>concordthresh && ind2-ind1>20) || SegmentGraph.vEdges[i].Head1!=false || SegmentGraph.vEdges[i].Head2!=true){
+			if(SegmentGraph.vNodes[ind1].Chr!=SegmentGraph.vNodes[ind2].Chr || (SegmentGraph.vNodes[ind2].Position-SegmentGraph.vNodes[ind1].Position-SegmentGraph.vNodes[ind1].Length>Concord_Dist_Pos && ind2-ind1>Concord_Dist_Idx) || SegmentGraph.vEdges[i].Head1!=false || SegmentGraph.vEdges[i].Head2!=true){
 				pair<int,int> pos1=Node_NewChr[SegmentGraph.vEdges[i].Ind1], pos2=Node_NewChr[SegmentGraph.vEdges[i].Ind2];
 				if(pos1.first==pos2.first && pos1.second<pos2.second && SegmentGraph.vEdges[i].Head1==(Components[pos1.first][pos1.second]<0) && SegmentGraph.vEdges[i].Head2==(Components[pos2.first][pos2.second]>0)){
 					output3<<SegmentGraph.vEdges[i].Ind1<<'\t'<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Chr<<','<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Position<<','<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Length<<'\t'<<(SegmentGraph.vEdges[i].Head1?"H\t":"T\t")<<SegmentGraph.vEdges[i].Ind2<<'\t';
@@ -76,6 +66,6 @@ int main(int argc, char* argv[]){
 				}
 			}
 		}
-		output3.close();*/
+		output3.close();
 	}
 }

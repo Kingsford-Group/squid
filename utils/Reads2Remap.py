@@ -14,6 +14,27 @@ def UnmapList(bamfile):
 	print(len(namebam))
 	return namebam
 
+def UnmapListfromStar(unmapprefix):
+	fp=open(unmapprefix+"1", 'r')
+	namestar=[]
+	linecount=0
+	for line in fp:
+		linecount+=1
+		if linecount%4==1:
+			strs=line.strip().split()
+			namestar.append(strs[0][1:])
+	fp.close()
+	fp=open(unmapprefix+"2", 'r')
+	linecount=0
+	for line in fp:
+		linecount+=1
+		if linecount%4==1:
+			strs=line.strip().split()
+			namestar.append(strs[0][1:])
+	fp.close()
+	namestar=set(namestar)
+	return namestar
+
 def ReadBEDList(bamfile, bedfile):
 	command="samtools view -L "+bedfile+" "+bamfile+" | cut -f1"
 	p=subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
@@ -61,16 +82,28 @@ def Reads2Remap(in_prefix, in_suffix, out_prefix, NameList):
 	fpout.close()
 
 if __name__=="__main__":
-	if len(sys.argv)!=5:
-		print("python3 Read2Remap.py <Input_BAM> <Input_BED> <FirstRead.fastq> <Out_Prefix>")
+	if len(sys.argv)<5:
+		print("python3 Read2Remap.py 1 <Input_BAM> <Input_BED> <FirstRead.fastq> <Out_Prefix>")
+		print("python3 Read2Remap.py 2 <StarUnmap> <Input_BAM> <Input_BED> <FirstRead.fastq> <Out_Prefix>")
 	else:
-		Input_BAM=sys.argv[1]
-		Input_BED=sys.argv[2]
-		In_Prefix=sys.argv[3][:(sys.argv[3].rfind("_"))]
-		In_Suffix=sys.argv[3][(sys.argv[3].rfind("_")+3):]
-		Out_Prefix=sys.argv[4]
+		if sys.argv[1]=='1':
+			Input_BAM=sys.argv[2]
+			Input_BED=sys.argv[3]
+			In_Prefix=sys.argv[4][:(sys.argv[4].rfind("_"))]
+			In_Suffix=sys.argv[4][(sys.argv[4].rfind("_")+3):]
+			Out_Prefix=sys.argv[5]
+		elif sys.argv[1]=='2':
+			Input_StarUnmap=sys.argv[2]
+			Input_BAM=sys.argv[3]
+			Input_BED=sys.argv[4]
+			In_Prefix=sys.argv[5][:(sys.argv[5].rfind("_"))]
+			In_Suffix=sys.argv[5][(sys.argv[5].rfind("_")+3):]
+			Out_Prefix=sys.argv[6]
 
-		NameList1=UnmapList(Input_BAM)
+		if sys.argv[1]=='1':
+			NameList1=UnmapList(Input_BAM)
+		elif sys.argv[1]=='2':
+			NameList1=UnmapListfromStar(Input_StarUnmap)
 		NameList2=ReadBEDList(Input_BAM, Input_BED)
 		NameList=NameList1|NameList2
 		Reads2Remap(In_Prefix, In_Suffix, Out_Prefix, NameList)

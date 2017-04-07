@@ -106,7 +106,12 @@ void OutputNewGenome(SegmentGraph_t& SegmentGraph, vector< vector<int> >& Compon
 		}
 		info=info.substr(0, info.size()-1);
 		output<<">chr"<<(i+1)<<'\t'<<"LN:"<<seq.size()<<'\t'<<info<<endl;
-		output<<seq<<endl;
+		int idx=0;
+		while(idx<seq.size()){
+			int nextidx=min(idx+80, (int)seq.size());
+			output<<seq.substr(idx, nextidx-idx)<<endl;
+			idx=nextidx;
+		}
 	}
 	output.close();
 };

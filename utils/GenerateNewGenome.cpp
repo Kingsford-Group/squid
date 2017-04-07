@@ -277,6 +277,7 @@ int main(int argc, char* argv[]){
 				Components=SegmentGraph.MergeComponents(Components);
 			}
 
+			Components=SegmentGraph.SortComponents(Components);
 			OutputNewGenome(SegmentGraph, Components, RefSequence, RefName, Output_Prefix+"_genome.fa");
 		}
 	}
