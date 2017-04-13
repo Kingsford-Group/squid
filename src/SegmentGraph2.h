@@ -56,21 +56,22 @@ public:
     vector<int> Label;
 public:
     SegmentGraph_t(){};
-    SegmentGraph_t(const vector<int>& RefLength, string bamfile);
+    SegmentGraph_t(const vector<int>& RefLength, string bamfile, SBamrecord_t& ChimSplit);
     SegmentGraph_t(string graphfile);
 
     bool IsDiscordant(int edgeidx);
     bool IsDiscordant(Edge_t* edge);
+    bool IsDiscordant(Edge_t edge);
 
     void BuildNode(const vector<int>& RefLength, string bamfile);
-    void BuildEdges(string bamfile);
+    void BuildEdges(string bamfile, SBamrecord_t& ChimSplit);
     void FilterbyWeight();
     void FilterbyInterleaving();
 
     vector<int> LocateRead(int initialguess, ReadRec_t& ReadRec);
     vector<int> LocateRead(vector<int>& singleRead_Node, ReadRec_t& ReadRec);
 
-    void RawEdges(string bamfile);
+    void RawEdges(string bamfile, SBamrecord_t& ChimSplit);
     
     void FilterEdges();
     void UpdateNodeLink();
@@ -82,6 +83,7 @@ public:
     int DFS(int node, int curlabelid, vector<int>& Label);
     void ConnectedComponent(int & maxcomponentsize);
     void ConnectedComponent();
+    void ExactBreakpoint(SBamrecord_t& Chimrecord, map<Edge_t, vector< pair<int,int> > >& ExactBP);
     void OutputGraph(string outputfile);
 
     vector< vector<int> > Ordering();

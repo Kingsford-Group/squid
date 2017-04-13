@@ -271,13 +271,12 @@ int main(int argc, char* argv[]){
 				SegmentGraph.ConnectedComponent();
 
 				Components=SegmentGraph.Ordering();
-				Components=SegmentGraph.SortComponents(Components);
-				Components=SegmentGraph.MergeSingleton(Components, RefLength);
-				Components=SegmentGraph.SortComponents(Components);
-				Components=SegmentGraph.MergeComponents(Components);
 			}
 
 			Components=SegmentGraph.SortComponents(Components);
+			Components=SegmentGraph.MergeSingleton(Components, RefLength);
+			Components=SegmentGraph.SortComponents(Components);
+			Components=SegmentGraph.MergeComponents(Components);
 			OutputNewGenome(SegmentGraph, Components, RefSequence, RefName, Output_Prefix+"_genome.fa");
 		}
 	}

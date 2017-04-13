@@ -21,6 +21,35 @@ pair<int,int> ExtremeValue(vector<int>::iterator itbegin, vector<int>::iterator 
 	return x;
 };
 
+void CountTop(vector< pair<int,int> >& x){
+	sort(x.begin(), x.end(), [](pair<int,int> a, pair<int,int> b){if(a.first!=b.first) return a.first<b.first; else return a.second<b.second;});
+	vector< pair<int,int> > y=x;
+	vector< pair<int,int> >::iterator ituniq=unique(y.begin(), y.end(), [](pair<int,int> a, pair<int,int> b){return a.first==b.first && a.second==b.second;});
+	y.resize(distance(y.begin(), ituniq));
+	vector<double> count(y.size(), 0);
+	for(int i=0; i<y.size(); i++)
+		for(int j=0; j<x.size(); j++)
+			if(y[i].first==x[j].first && y[i].second==x[j].second)
+				count[i]+=1;
+			else if(abs(y[i].first-x[j].first)+abs(y[i].second-x[j].second)<10)
+				count[i]+=0.5;
+	x.clear();
+	while(x.size()<5){
+		vector<double>::iterator it=max_element(count.begin(), count.end());
+		if((*it)>3){
+			bool flag=true;
+			for(int i=0; i<x.size(); i++)
+				if(abs(x[i].first-y[distance(count.begin(), it)].first)+abs(x[i].second-y[distance(count.begin(), it)].second)<50)
+					flag=false;
+			if(flag)
+				x.push_back(y[distance(count.begin(), it)]);
+		}
+		else
+			break;
+		*it=0;
+	}
+};
+
 SegmentGraph_t::SegmentGraph_t(const vector<int>& RefLength, SBamrecord_t& Chimrecord, string ConcordBamfile){
 	BuildNode(RefLength, Chimrecord, ConcordBamfile);
 	BuildEdges(Chimrecord, ConcordBamfile);
@@ -33,7 +62,7 @@ SegmentGraph_t::SegmentGraph_t(const vector<int>& RefLength, SBamrecord_t& Chimr
 	cout<<vNodes.size()<<'\t'<<vEdges.size()<<endl;
 };
 
-SegmentGraph_t::SegmentGraph_t(string graphfile){
+SegmentGraph_t::SegmentGraph_t(string graphfile, double ratio){
 	ifstream input(graphfile);
 	string line;
 	while(getline(input, line)){
@@ -47,6 +76,8 @@ SegmentGraph_t::SegmentGraph_t(string graphfile){
 		}
 		else if(strs[0]=="edge"){
 			Edge_t tmp(stoi(strs[2]), (strs[3]=="H"?true:false), stoi(strs[4]), (strs[5]=="H"?true:false), stoi(strs[6]));
+			if(IsDiscordant(tmp))
+				tmp.Weight=(int)tmp.Weight*ratio;
 			vEdges.push_back(tmp);
 		}
 	}
@@ -74,6 +105,17 @@ bool SegmentGraph_t::IsDiscordant(Edge_t* edge){
 	else if(vNodes[ind2].Position-vNodes[ind1].Position-vNodes[ind1].Length>Concord_Dist_Pos && ind2-ind1>Concord_Dist_Idx)
 		return true;
 	else if(edge->Head1!=false || edge->Head2!=true)
+		return true;
+	return false;
+};
+
+bool SegmentGraph_t::IsDiscordant(Edge_t edge){
+	int ind1=edge.Ind1, ind2=edge.Ind2;
+	if(vNodes[ind1].Chr!=vNodes[ind2].Chr)
+		return true;
+	else if(vNodes[ind2].Position-vNodes[ind1].Position-vNodes[ind1].Length>Concord_Dist_Pos && ind2-ind1>Concord_Dist_Idx)
+		return true;
+	else if(edge.Head1!=false || edge.Head2!=true)
 		return true;
 	return false;
 };
@@ -905,6 +947,7 @@ vector<int> SegmentGraph_t::LocateRead(vector<int>& singleRead_Node, ReadRec_t& 
 void SegmentGraph_t::RawEdgesChim(SBamrecord_t& Chimrecord){
 	int firstfrontindex=0, i=0, j=0, splittedcount=0;
 	clock_t starttime=clock();
+	map<Edge_t, vector< pair<int,int> > > PairBreakpoints;
 	for(vector<ReadRec_t>::iterator it=Chimrecord.begin(); it!=Chimrecord.end(); it++){
 		if(it->FirstRead.size()==0 && it->SecondMate.size()==0)
 			continue;
@@ -939,7 +982,23 @@ void SegmentGraph_t::RawEdgesChim(SBamrecord_t& Chimrecord){
 					bool tmpHead1=(it->FirstRead[k].IsReverse)?true:false, tmpHead2=(it->FirstRead[k+1].IsReverse)?false:true;
 					Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
 					assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
-					vEdges.push_back(tmp);
+					if(!IsDiscordant(tmp))
+						vEdges.push_back(tmp);
+					else{
+						int breakpoint1=(it->FirstRead[k].IsReverse)?(it->FirstRead[k].RefPos):(it->FirstRead[k].RefPos+it->FirstRead[k].MatchRef);
+						int breakpoint2=(it->FirstRead[k+1].IsReverse)?(it->FirstRead[k+1].RefPos+it->FirstRead[k+1].MatchRef):(it->FirstRead[k+1].RefPos);
+						if(it->FirstRead[k]>it->FirstRead[k+1]){
+							int tmpbreakpoint=breakpoint1;
+							breakpoint1=breakpoint2; breakpoint2=tmpbreakpoint;
+						}
+						if(PairBreakpoints.find(tmp)==PairBreakpoints.end()){
+							vector< pair<int,int> > tmpBreakpoints;
+							tmpBreakpoints.push_back(make_pair(breakpoint1, breakpoint2));
+							PairBreakpoints[tmp]=tmpBreakpoints;
+						}
+						else
+							PairBreakpoints[tmp].push_back(make_pair(breakpoint1, breakpoint2));
+					}
 				}
 			}
 		}
@@ -951,7 +1010,23 @@ void SegmentGraph_t::RawEdgesChim(SBamrecord_t& Chimrecord){
 					bool tmpHead1=(it->SecondMate[k].IsReverse)?true:false, tmpHead2=(it->SecondMate[k+1].IsReverse)?false:true;
 					Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
 					assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
-					vEdges.push_back(tmp);
+					if(!IsDiscordant(tmp))
+						vEdges.push_back(tmp);
+					else{
+						int breakpoint1=(it->SecondMate[k].IsReverse)?(it->SecondMate[k].RefPos):(it->SecondMate[k].RefPos+it->SecondMate[k].MatchRef);
+						int breakpoint2=(it->SecondMate[k+1].IsReverse)?(it->SecondMate[k+1].RefPos+it->SecondMate[k+1].MatchRef):(it->SecondMate[k+1].RefPos);
+						if(it->SecondMate[k]>it->SecondMate[k+1]){
+							int tmpbreakpoint=breakpoint1;
+							breakpoint1=breakpoint2; breakpoint2=tmpbreakpoint;
+						}
+						if(PairBreakpoints.find(tmp)==PairBreakpoints.end()){
+							vector< pair<int,int> > tmpBreakpoints;
+							tmpBreakpoints.push_back(make_pair(breakpoint1, breakpoint2));
+							PairBreakpoints[tmp]=tmpBreakpoints;
+						}
+						else
+							PairBreakpoints[tmp].push_back(make_pair(breakpoint1, breakpoint2));
+					}
 				}
 			}
 		}
@@ -961,19 +1036,61 @@ void SegmentGraph_t::RawEdgesChim(SBamrecord_t& Chimrecord){
 				i=tmpRead_Node[(int)it->FirstRead.size()-1]; j=tmpRead_Node.back();
 				bool isoverlap=false;
 				for(int k=0; k<it->FirstRead.size(); k++)
-					if(j==tmpRead_Node[k])
+					if(j==tmpRead_Node[k] || (tmpRead_Node[k]<j && !it->FirstRead[k].IsReverse && it->SecondMate.back().IsReverse) || (j<tmpRead_Node[k] && !it->SecondMate.back().IsReverse && it->FirstRead[k].IsReverse))
 						isoverlap=true;
 				for(int k=0; k<it->SecondMate.size(); k++)
-					if(i==tmpRead_Node[(int)it->FirstRead.size()+k])
+					if(i==tmpRead_Node[(int)it->FirstRead.size()+k] || (tmpRead_Node[(int)it->FirstRead.size()+k]<i && !it->SecondMate[k].IsReverse && it->FirstRead.back().IsReverse) || (i<tmpRead_Node[(int)it->FirstRead.size()+k] && !it->FirstRead.back().IsReverse && it->SecondMate[k].IsReverse))
 						isoverlap=true;
 				if(i!=j && i!=-1 && j!=-1 && !isoverlap){
 					bool tmpHead1=(it->FirstRead.back().IsReverse)?true:false, tmpHead2=(it->SecondMate.back().IsReverse)?true:false;
 					Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
 					assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
-					vEdges.push_back(tmp);
+					if(!IsDiscordant(tmp))
+						vEdges.push_back(tmp);
+					else{
+						int breakpoint1=(it->FirstRead.back().IsReverse)?(it->FirstRead.back().RefPos):(it->FirstRead.back().RefPos+it->FirstRead.back().MatchRef);
+						int breakpoint2=(it->SecondMate.back().IsReverse)?(it->SecondMate.back().RefPos):(it->SecondMate.back().RefPos+it->SecondMate.back().MatchRef);
+						if(it->FirstRead.back()>it->SecondMate.back()){
+							int tmpbreakpoint=breakpoint1;
+							breakpoint1=breakpoint2; breakpoint2=tmpbreakpoint;
+						}
+						if(PairBreakpoints.find(tmp)==PairBreakpoints.end()){
+							vector< pair<int,int> > tmpBreakpoints;
+							tmpBreakpoints.push_back(make_pair(breakpoint1, breakpoint2));
+							PairBreakpoints[tmp]=tmpBreakpoints;
+						}
+						else
+							PairBreakpoints[tmp].push_back(make_pair(breakpoint1, breakpoint2));
+					}
 				}
 			}
 		}
+	}
+	int FragSize=500;
+	for(map<Edge_t, vector< pair<int,int> > >::iterator it=PairBreakpoints.begin(); it!=PairBreakpoints.end(); it++){
+		sort(it->second.begin(), it->second.end(), [](pair<int,int> a, pair<int,int> b){if(a.first!=b.first) return a.first<b.first; else return a.second<b.second;});
+		vector< pair<int,int> > tmpBreakpoints;
+		for(vector< pair<int,int> >::iterator itbp=it->second.begin(); itbp!=it->second.end(); itbp++){
+			int groupcount=-1;
+			for(vector< pair<int,int> >::iterator itbp2=itbp; itbp2!=(it->second.begin()-1); itbp2--)
+				if(abs(itbp->first-itbp2->first)+abs(itbp->second-itbp2->second)<FragSize)
+					groupcount++;
+				else if(itbp2->first<itbp->first-FragSize)
+					break;
+			for(vector< pair<int,int> >::iterator itbp2=itbp; itbp2!=(it->second.end()); itbp2++)
+				if(abs(itbp->first-itbp2->first)+abs(itbp->second-itbp2->second)<FragSize)
+					groupcount++;
+				else if(itbp2->first>itbp->first+FragSize)
+					break;
+			if(groupcount>Min_Edge_Weight-4)
+				tmpBreakpoints.push_back(*itbp);
+		}
+		Edge_t tmp=it->first;
+		tmp.Weight=(int)tmpBreakpoints.size();
+		if(vNodes[tmp.Ind1].Chr==2 && vNodes[tmp.Ind2].Chr==2 && tmp.Head1==true && tmp.Head2==false && vNodes[tmp.Ind1].Position>=17097171 && vNodes[tmp.Ind1].Position<=17097171+863 && vNodes[tmp.Ind2].Position>=17098034 && vNodes[tmp.Ind2].Position<=17098034+680)
+			cout<<tmp.Weight<<endl;
+		if(tmp.Weight>0)
+			vEdges.push_back(tmp);
 	}
 };
 
@@ -1075,10 +1192,10 @@ void SegmentGraph_t::RawEdgesOther(SBamrecord_t& Chimrecord, string ConcordBamfi
 						i=tmpRead_Node[(int)readrec.FirstRead.size()-1]; j=tmpRead_Node.back();
 						bool isoverlap=false;
 						for(int k=0; k<readrec.FirstRead.size(); k++)
-							if(j==tmpRead_Node[k])
+							if(j==tmpRead_Node[k] || (tmpRead_Node[k]<j && !readrec.FirstRead[k].IsReverse && readrec.SecondMate.back().IsReverse) || (j<tmpRead_Node[k] && !readrec.SecondMate.back().IsReverse && readrec.FirstRead[k].IsReverse))
 								isoverlap=true;
 						for(int k=0; k<readrec.SecondMate.size(); k++)
-							if(i==tmpRead_Node[(int)readrec.FirstRead.size()+k])
+							if(i==tmpRead_Node[(int)readrec.FirstRead.size()+k] || (tmpRead_Node[(int)readrec.FirstRead.size()+k]<i && !readrec.SecondMate[k].IsReverse && readrec.FirstRead.back().IsReverse) || (i<tmpRead_Node[(int)readrec.FirstRead.size()+k] && !readrec.FirstRead.back().IsReverse && readrec.SecondMate[k].IsReverse))
 								isoverlap=true;
 						if(i!=j && i!=-1 && j!=-1 && !isoverlap){
 							bool tmpHead1=(readrec.FirstRead.back().IsReverse)?true:false, tmpHead2=(readrec.SecondMate.back().IsReverse)?true:false;
@@ -1881,6 +1998,72 @@ void SegmentGraph_t::ConnectedComponent(){
 		curlabelid++;
 	}
 	cout<<"Maximum connected component size="<<maxcomponentsize<<endl;
+};
+
+void SegmentGraph_t::ExactBreakpoint(SBamrecord_t& Chimrecord, map<Edge_t, vector< pair<int,int> > >& ExactBP){
+	ExactBP.clear();
+	int firstfrontindex=0;
+	int i=0, j=0;
+	for(SBamrecord_t::iterator it=Chimrecord.begin(); it!=Chimrecord.end(); it++){
+		if(it->FirstRead.size()<=1 && it->SecondMate.size()<=1)
+			continue;
+		vector<int> tmpRead_Node=LocateRead(firstfrontindex, *it);
+		if(tmpRead_Node[0]!=-1)
+			firstfrontindex=tmpRead_Node[0];
+		if(it->FirstRead.size()>1){
+			for(int k=0; k<it->FirstRead.size()-1; k++){
+				i=tmpRead_Node[k]; j=tmpRead_Node[k+1];
+				if(i!=j && i!=-1 && j!=-1){
+					bool tmpHead1=(it->FirstRead[k].IsReverse)?true:false, tmpHead2=(it->FirstRead[k+1].IsReverse)?false:true;
+					Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
+					if(IsDiscordant(tmp)){
+						int breakpoint1=(it->FirstRead[k].IsReverse)?(it->FirstRead[k].RefPos):(it->FirstRead[k].RefPos+it->FirstRead[k].MatchRef);
+						int breakpoint2=(it->FirstRead[k+1].IsReverse)?(it->FirstRead[k+1].RefPos+it->FirstRead[k+1].MatchRef):(it->FirstRead[k+1].RefPos);
+						if(it->FirstRead[k]>it->FirstRead[k+1]){
+							int tmpbreakpoint=breakpoint1;
+							breakpoint1=breakpoint2; breakpoint2=tmpbreakpoint;
+						}
+						if(ExactBP.find(tmp)==ExactBP.end()){
+							vector< pair<int,int> > tmpBP;
+							tmpBP.push_back(make_pair(breakpoint1, breakpoint2));
+							ExactBP[tmp]=tmpBP;
+						}
+						else
+							ExactBP[tmp].push_back(make_pair(breakpoint1, breakpoint2));
+					}
+				}
+			}
+		}
+		if(it->SecondMate.size()>1){
+			for(int k=0; k<it->SecondMate.size()-1; k++){
+				i=tmpRead_Node[(int)it->FirstRead.size()+k]; j=tmpRead_Node[(int)it->FirstRead.size()+k+1];
+				if(i!=j && i!=-1 && j!=-1){
+					bool tmpHead1=(it->SecondMate[k].IsReverse)?true:false, tmpHead2=(it->SecondMate[k+1].IsReverse)?false:true;
+					Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
+					if(IsDiscordant(tmp)){
+						int breakpoint1=(it->SecondMate[k].IsReverse)?(it->SecondMate[k].RefPos):(it->SecondMate[k].RefPos+it->SecondMate[k].MatchRef);
+						int breakpoint2=(it->SecondMate[k+1].IsReverse)?(it->SecondMate[k+1].RefPos+it->SecondMate[k+1].MatchRef):(it->SecondMate[k+1].RefPos);
+						if(it->SecondMate[k]>it->SecondMate[k+1]){
+							int tmpbreakpoint=breakpoint1;
+							breakpoint1=breakpoint2; breakpoint2=tmpbreakpoint;
+						}
+						if(ExactBP.find(tmp)==ExactBP.end()){
+							vector< pair<int,int> > tmpBP;
+							tmpBP.push_back(make_pair(breakpoint1, breakpoint2));
+							ExactBP[tmp]=tmpBP;
+						}
+						else
+							ExactBP[tmp].push_back(make_pair(breakpoint1, breakpoint2));
+					}
+				}
+			}
+		}
+	}
+	for(map<Edge_t, vector< pair<int,int> > >::iterator it=ExactBP.begin(); it!=ExactBP.end(); it++){
+		if(it->first.Ind1==1273 && it->first.Ind2==2234)
+			cout<<"watch here\n";
+		CountTop(it->second);
+	}
 };
 
 void SegmentGraph_t::OutputGraph(string outputfile){

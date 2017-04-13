@@ -19,8 +19,8 @@ int main(int argc, char* argv[]){
 		BuildRefName(Input_BAM, RefName, RefTable, RefLength);
 		for(map<string,int>::iterator it=RefTable.begin(); it!=RefTable.end(); it++)
 			cout<<"Reference name "<<it->first<<"\t-->\t"<<it->second<<endl;
-
-		SegmentGraph_t SegmentGraph(RefLength, Input_BAM);
+		SBamrecord_t ChimSplit;
+		SegmentGraph_t SegmentGraph(RefLength, Input_BAM, ChimSplit);
 
 		if(Print_Graph)
 			SegmentGraph.OutputGraph(Output_Prefix+"_graph.txt");
@@ -49,7 +49,8 @@ int main(int argc, char* argv[]){
 				OutputNewGenome(SegmentGraph, Components, RefSequence, RefName, Output_Prefix+"_genome.fa");
 		}
 
-		int concordthresh=50000;
+		map<Edge_t, vector< pair<int,int> > > ExactBP;
+		SegmentGraph.ExactBreakpoint(ChimSplit, ExactBP);
 		sort(SegmentGraph.vEdges.begin(), SegmentGraph.vEdges.end(),  [](Edge_t a, Edge_t b){return a.Weight>b.Weight;});
 		ofstream output3(Output_Prefix+"_discordantedges.txt", ios::out);
 		output3<<"# ";
@@ -59,15 +60,35 @@ int main(int argc, char* argv[]){
 		output3<<"# Ind1\tNode1\tHead1\tInd2\tNode2\tHead2\tWeight\n";
 		for(int i=0; i<SegmentGraph.vEdges.size(); i++){
 			int ind1=SegmentGraph.vEdges[i].Ind1, ind2=SegmentGraph.vEdges[i].Ind2;
-			if(SegmentGraph.vNodes[ind1].Chr!=SegmentGraph.vNodes[ind2].Chr || (SegmentGraph.vNodes[ind2].Position-SegmentGraph.vNodes[ind1].Position-SegmentGraph.vNodes[ind1].Length>concordthresh && ind2-ind1>20) || SegmentGraph.vEdges[i].Head1!=false || SegmentGraph.vEdges[i].Head2!=true){
+			if(SegmentGraph.vNodes[ind1].Chr!=SegmentGraph.vNodes[ind2].Chr || (SegmentGraph.vNodes[ind2].Position-SegmentGraph.vNodes[ind1].Position-SegmentGraph.vNodes[ind1].Length>Concord_Dist_Pos && ind2-ind1>20) || SegmentGraph.vEdges[i].Head1!=false || SegmentGraph.vEdges[i].Head2!=true){
+				bool flag=false;
 				pair<int,int> pos1=Node_NewChr[SegmentGraph.vEdges[i].Ind1], pos2=Node_NewChr[SegmentGraph.vEdges[i].Ind2];
-				if(pos1.first==pos2.first && pos1.second<pos2.second && SegmentGraph.vEdges[i].Head1==(Components[pos1.first][pos1.second]<0) && SegmentGraph.vEdges[i].Head2==(Components[pos2.first][pos2.second]>0)){
-					output3<<SegmentGraph.vEdges[i].Ind1<<'\t'<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Chr<<','<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Position<<','<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Length<<'\t'<<(SegmentGraph.vEdges[i].Head1?"H\t":"T\t")<<SegmentGraph.vEdges[i].Ind2<<'\t';
-					output3<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Chr<<','<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Position<<','<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Length<<'\t'<<(SegmentGraph.vEdges[i].Head2?"H\t":"T\t")<<SegmentGraph.vEdges[i].Weight<<endl;
-				}
-				else if(pos1.first==pos2.first && pos1.second>pos2.second && SegmentGraph.vEdges[i].Head2==(Components[pos2.first][pos2.second]<0) && SegmentGraph.vEdges[i].Head1==(Components[pos1.first][pos1.second]>0)){
-					output3<<SegmentGraph.vEdges[i].Ind1<<'\t'<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Chr<<','<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Position<<','<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Length<<'\t'<<(SegmentGraph.vEdges[i].Head1?"H\t":"T\t")<<SegmentGraph.vEdges[i].Ind2<<'\t';
-					output3<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Chr<<','<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Position<<','<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Length<<'\t'<<(SegmentGraph.vEdges[i].Head2?"H\t":"T\t")<<SegmentGraph.vEdges[i].Weight<<endl;
+				if(pos1.first==pos2.first && pos1.second<pos2.second && SegmentGraph.vEdges[i].Head1==(Components[pos1.first][pos1.second]<0) && SegmentGraph.vEdges[i].Head2==(Components[pos2.first][pos2.second]>0))
+					flag=true;
+				else if(pos1.first==pos2.first && pos1.second>pos2.second && SegmentGraph.vEdges[i].Head2==(Components[pos2.first][pos2.second]<0) && SegmentGraph.vEdges[i].Head1==(Components[pos1.first][pos1.second]>0))
+					flag=true;
+				if(flag){
+					map<Edge_t, vector< pair<int,int> > >::iterator itmap=ExactBP.find(SegmentGraph.vEdges[i]);
+					vector< pair<int,int> > BP;
+					if(itmap==ExactBP.end() || itmap->second.size()==0){
+						int bp1,bp2;
+						bp1=(SegmentGraph.vEdges[i].Head1?SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Position:(SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Position+SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Length));
+						bp2=(SegmentGraph.vEdges[i].Head2?SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Position:(SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Position+SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Length));
+						BP.push_back(make_pair(bp1,bp2));
+					}
+					else
+						BP=itmap->second;
+					for(int k=0; k<BP.size(); k++){
+						if(SegmentGraph.vEdges[i].Head1)
+							output3<<SegmentGraph.vEdges[i].Ind1<<'\t'<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Chr<<','<<BP[k].first<<","<<(SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Position+SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Length-BP[k].first)<<"\tH\t";
+						else
+							output3<<SegmentGraph.vEdges[i].Ind1<<'\t'<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Chr<<','<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Position<<","<<(BP[k].first-SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Position)<<"\tT\t";
+						if(SegmentGraph.vEdges[i].Head2)
+							output3<<SegmentGraph.vEdges[i].Ind2<<'\t'<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Chr<<','<<BP[k].second<<","<<(SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Position+SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Length-BP[k].second)<<"\tH\t";
+						else
+							output3<<SegmentGraph.vEdges[i].Ind2<<'\t'<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Chr<<','<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Position<<","<<(BP[k].second-SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Position)<<"\tT\t";
+						output3<<SegmentGraph.vEdges[i].Weight<<endl;
+					}
 				}
 			}
 		}

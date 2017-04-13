@@ -36,6 +36,12 @@ public:
         else
             return RefPos<rhs.RefPos;
     };
+    bool operator > (const SingleBamRec_t& rhs) const{
+        if(RefID!=rhs.RefID)
+            return RefID>rhs.RefID;
+        else
+            return RefPos>rhs.RefPos;
+    };
     bool operator == (const SingleBamRec_t& rhs) const{
         return (RefID==rhs.RefID && RefPos==rhs.RefPos);
     };

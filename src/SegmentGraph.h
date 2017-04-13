@@ -43,6 +43,7 @@ static std::map<char,char> Nucleotide={{'A','T'},{'C','G'},{'G','C'},{'T','A'},{
 
 void ReverseComplement(string::iterator itbegin, string::iterator itend);
 pair<int,int> ExtremeValue(vector<int>::iterator itbegin, vector<int>::iterator itend);
+void CountTop(vector< pair<int,int> >& x);
 
 struct MinCutEdge_t
 {
@@ -58,10 +59,11 @@ public:
 public:
     SegmentGraph_t(){};
     SegmentGraph_t(const vector<int>& RefLength, SBamrecord_t& Chimrecord, string ConcordBamfile);
-    SegmentGraph_t(string graphfile);
+    SegmentGraph_t(string graphfile, double ratio=1);
 
     bool IsDiscordant(int edgeidx);
     bool IsDiscordant(Edge_t* edge);
+    bool IsDiscordant(Edge_t edge);
 
     void BuildNode(const vector<int>& RefLength, SBamrecord_t& Chimrecord, string ConcordBamfile);
     void BuildEdges(SBamrecord_t& Chimrecord, string ConcordBamfile);
@@ -84,6 +86,7 @@ public:
     int DFS(int node, int curlabelid, vector<int>& Label);
     void ConnectedComponent(int & maxcomponentsize);
     void ConnectedComponent();
+    void ExactBreakpoint(SBamrecord_t& Chimrecord, map<Edge_t, vector< pair<int,int> > >& ExactBP);
     void OutputGraph(string outputfile);
 
     vector< vector<int> > Ordering();
