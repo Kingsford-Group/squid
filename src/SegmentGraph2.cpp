@@ -786,6 +786,18 @@ void SegmentGraph_t::RawEdges(string bamfile, SBamrecord_t& ChimSplit){
 						for(int k=0; k<readrec.SecondMate.size(); k++)
 							if(i==tmpRead_Node[(int)readrec.FirstRead.size()+k])
 								isoverlap=true;
+						if(readrec.FirstRead.size()>1){
+							if(readrec.IsEndDiscordant(true) && ((tmpRead_Node.front()<=j && tmpRead_Node[(int)readrec.FirstRead.size()-1]>=j) || (tmpRead_Node.front()>=j && tmpRead_Node[(int)readrec.FirstRead.size()-1]<=j)))
+								isoverlap=true;
+							else if(!readrec.IsEndDiscordant(true) && abs(i-j)<3)
+								isoverlap=true;
+						}
+						if(readrec.SecondMate.size()>1){
+							if(readrec.IsEndDiscordant(false) && ((tmpRead_Node[(int)readrec.FirstRead.size()]<=i && tmpRead_Node.back()>=i) || (tmpRead_Node[(int)readrec.FirstRead.size()]>=i && tmpRead_Node.back()<=i)))
+								isoverlap=true;
+							else if(!readrec.IsEndDiscordant(false) && abs(i-j)<3)
+								isoverlap=true;
+						}
 						if(i!=j && i!=-1 && j!=-1 && !isoverlap){
 							bool tmpHead1=(readrec.FirstRead.back().IsReverse)?true:false, tmpHead2=(readrec.SecondMate.back().IsReverse)?true:false;
 							Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);

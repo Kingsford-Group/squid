@@ -1036,11 +1036,23 @@ void SegmentGraph_t::RawEdgesChim(SBamrecord_t& Chimrecord){
 				i=tmpRead_Node[(int)it->FirstRead.size()-1]; j=tmpRead_Node.back();
 				bool isoverlap=false;
 				for(int k=0; k<it->FirstRead.size(); k++)
-					if(j==tmpRead_Node[k] || (tmpRead_Node[k]<j && !it->FirstRead[k].IsReverse && it->SecondMate.back().IsReverse) || (j<tmpRead_Node[k] && !it->SecondMate.back().IsReverse && it->FirstRead[k].IsReverse))
+					if(j==tmpRead_Node[k])
 						isoverlap=true;
 				for(int k=0; k<it->SecondMate.size(); k++)
-					if(i==tmpRead_Node[(int)it->FirstRead.size()+k] || (tmpRead_Node[(int)it->FirstRead.size()+k]<i && !it->SecondMate[k].IsReverse && it->FirstRead.back().IsReverse) || (i<tmpRead_Node[(int)it->FirstRead.size()+k] && !it->FirstRead.back().IsReverse && it->SecondMate[k].IsReverse))
+					if(i==tmpRead_Node[(int)it->FirstRead.size()+k])
 						isoverlap=true;
+				if(it->FirstRead.size()>1){
+					if(it->IsEndDiscordant(true) && ((tmpRead_Node.front()<=j && tmpRead_Node[(int)it->FirstRead.size()-1]>=j) || (tmpRead_Node.front()>=j && tmpRead_Node[(int)it->FirstRead.size()-1]<=j)))
+						isoverlap=true;
+					else if(!it->IsEndDiscordant(true) && abs(i-j)<3)
+						isoverlap=true;
+				}
+				if(it->SecondMate.size()>1){
+					if(it->IsEndDiscordant(false) && ((tmpRead_Node[(int)it->FirstRead.size()]<=i && tmpRead_Node.back()>=i) || (tmpRead_Node[(int)it->FirstRead.size()]>=i && tmpRead_Node.back()<=i)))
+						isoverlap=true;
+					else if(!it->IsEndDiscordant(false) && abs(i-j)<3)
+						isoverlap=true;
+				}
 				if(i!=j && i!=-1 && j!=-1 && !isoverlap){
 					bool tmpHead1=(it->FirstRead.back().IsReverse)?true:false, tmpHead2=(it->SecondMate.back().IsReverse)?true:false;
 					Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
@@ -1192,11 +1204,23 @@ void SegmentGraph_t::RawEdgesOther(SBamrecord_t& Chimrecord, string ConcordBamfi
 						i=tmpRead_Node[(int)readrec.FirstRead.size()-1]; j=tmpRead_Node.back();
 						bool isoverlap=false;
 						for(int k=0; k<readrec.FirstRead.size(); k++)
-							if(j==tmpRead_Node[k] || (tmpRead_Node[k]<j && !readrec.FirstRead[k].IsReverse && readrec.SecondMate.back().IsReverse) || (j<tmpRead_Node[k] && !readrec.SecondMate.back().IsReverse && readrec.FirstRead[k].IsReverse))
+							if(j==tmpRead_Node[k] )
 								isoverlap=true;
 						for(int k=0; k<readrec.SecondMate.size(); k++)
-							if(i==tmpRead_Node[(int)readrec.FirstRead.size()+k] || (tmpRead_Node[(int)readrec.FirstRead.size()+k]<i && !readrec.SecondMate[k].IsReverse && readrec.FirstRead.back().IsReverse) || (i<tmpRead_Node[(int)readrec.FirstRead.size()+k] && !readrec.FirstRead.back().IsReverse && readrec.SecondMate[k].IsReverse))
+							if(i==tmpRead_Node[(int)readrec.FirstRead.size()+k])
 								isoverlap=true;
+						if(readrec.FirstRead.size()>1){
+							if(readrec.IsEndDiscordant(true) && ((tmpRead_Node.front()<=j && tmpRead_Node[(int)readrec.FirstRead.size()-1]>=j) || (tmpRead_Node.front()>=j && tmpRead_Node[(int)readrec.FirstRead.size()-1]<=j)))
+								isoverlap=true;
+							else if(!readrec.IsEndDiscordant(true) && abs(i-j)<3)
+								isoverlap=true;
+						}
+						if(readrec.SecondMate.size()>1){
+							if(readrec.IsEndDiscordant(false) && ((tmpRead_Node[(int)readrec.FirstRead.size()]<=i && tmpRead_Node.back()>=i) || (tmpRead_Node[(int)readrec.FirstRead.size()]>=i && tmpRead_Node.back()<=i)))
+								isoverlap=true;
+							else if(!readrec.IsEndDiscordant(false) && abs(i-j)<3)
+								isoverlap=true;
+						}
 						if(i!=j && i!=-1 && j!=-1 && !isoverlap){
 							bool tmpHead1=(readrec.FirstRead.back().IsReverse)?true:false, tmpHead2=(readrec.SecondMate.back().IsReverse)?true:false;
 							Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
