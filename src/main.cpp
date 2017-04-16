@@ -47,7 +47,7 @@ int main(int argc, char* argv[]){
 			WriteComponents(Output_Prefix+"_component.txt", Components);
 		map<Edge_t, vector< pair<int,int> > > ExactBP;
 		SegmentGraph.ExactBreakpoint(Chimrecord, ExactBP);
-		//WriteBEDPE(Output_Prefix+"_sv.txt", SegmentGraph, Components, Node_NewChr, RefName, ExactBP);
+		WriteBEDPE(Output_Prefix+"_sv.txt", SegmentGraph, Components, Node_NewChr, RefName, ExactBP);
 
 		if(Print_Rearranged_Genome){
 			vector<string> RefSequence;
@@ -56,7 +56,7 @@ int main(int argc, char* argv[]){
 				OutputNewGenome(SegmentGraph, Components, RefSequence, RefName, Output_Prefix+"_genome.fa");
 		}
 
-		sort(SegmentGraph.vEdges.begin(), SegmentGraph.vEdges.end(),  [](Edge_t a, Edge_t b){return a.Weight>b.Weight;});
+		/*sort(SegmentGraph.vEdges.begin(), SegmentGraph.vEdges.end(),  [](Edge_t a, Edge_t b){return a.Weight>b.Weight;});
 		ofstream output3(Output_Prefix+"_discordantedges.txt", ios::out);
 		output3<<"# ";
 		for(int i=0; i<argc; i++)
@@ -97,6 +97,6 @@ int main(int argc, char* argv[]){
 				}
 			}
 		}
-		output3.close();
+		output3.close();*/
 	}
 }
