@@ -84,7 +84,7 @@ SegmentGraph_t::SegmentGraph_t(string graphfile, double ratio=1){
 	}
 	if((int)vNodes.size()<=maxnode)
 		for(int i=(int)vNodes.size(); i<=maxnode; i++){
-			Node_t tmp();
+			Node_t tmp;
 			vNodes.push_back(tmp);
 		}
 	input.close();
