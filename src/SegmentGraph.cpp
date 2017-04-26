@@ -65,6 +65,7 @@ SegmentGraph_t::SegmentGraph_t(const vector<int>& RefLength, SBamrecord_t& Chimr
 SegmentGraph_t::SegmentGraph_t(string graphfile, double ratio){
 	ifstream input(graphfile);
 	string line;
+	int maxnode=0;
 	while(getline(input, line)){
 		if(line[0]=='#')
 			continue;
@@ -79,8 +80,15 @@ SegmentGraph_t::SegmentGraph_t(string graphfile, double ratio){
 			if(IsDiscordant(tmp))
 				tmp.Weight=(int)tmp.Weight*ratio;
 			vEdges.push_back(tmp);
+			if(tmp.Ind1>maxnode || tmp.Ind2>maxnode)
+				maxnode=max(tmp.Ind1, tmp.Ind2);
 		}
 	}
+	if((int)vNodes.size()<=maxnode)
+		for(int i=(int)vNodes.size(); i<=maxnode; i++){
+			Node_t tmp();
+			vNodes.push_back(tmp);
+		}
 	input.close();
 	UpdateNodeLink();
 	ConnectedComponent();

@@ -60,9 +60,10 @@ SegmentGraph_t::SegmentGraph_t(const vector<int>& RefLength, string bamfile, SBa
 	cout<<vNodes.size()<<'\t'<<vEdges.size()<<endl;
 };
 
-SegmentGraph_t::SegmentGraph_t(string graphfile){
+SegmentGraph_t::SegmentGraph_t(string graphfile, double ratio=1){
 	ifstream input(graphfile);
 	string line;
+	int maxnode=0;
 	while(getline(input, line)){
 		if(line[0]=='#')
 			continue;
@@ -74,11 +75,18 @@ SegmentGraph_t::SegmentGraph_t(string graphfile){
 		}
 		else if(strs[0]=="edge"){
 			Edge_t tmp(stoi(strs[2]), (strs[3]=="H"?true:false), stoi(strs[4]), (strs[5]=="H"?true:false), stoi(strs[6]));
-			if(tmp.Head1!=false || tmp.Head2!=true || vNodes[tmp.Ind1].Chr!=vNodes[tmp.Ind2].Chr || (tmp.Ind2-tmp.Ind1>Concord_Dist_Idx && vNodes[tmp.Ind2].Position-vNodes[tmp.Ind1].Position-vNodes[tmp.Ind1].Length>Concord_Dist_Pos))
-				tmp.Weight=(int)tmp.Weight*1.5;
+			if(IsDiscordant(tmp))
+				tmp.Weight=(int)tmp.Weight*ratio;
 			vEdges.push_back(tmp);
+			if(tmp.Ind1>maxnode || tmp.Ind2>maxnode)
+				maxnode=max(tmp.Ind1, tmp.Ind2);
 		}
 	}
+	if((int)vNodes.size()<=maxnode)
+		for(int i=(int)vNodes.size(); i<=maxnode; i++){
+			Node_t tmp();
+			vNodes.push_back(tmp);
+		}
 	input.close();
 	UpdateNodeLink();
 	ConnectedComponent();

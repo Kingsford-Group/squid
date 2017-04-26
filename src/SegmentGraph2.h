@@ -57,7 +57,7 @@ public:
 public:
     SegmentGraph_t(){};
     SegmentGraph_t(const vector<int>& RefLength, string bamfile, SBamrecord_t& ChimSplit);
-    SegmentGraph_t(string graphfile);
+    SegmentGraph_t(string graphfile, double ratio=1);
 
     bool IsDiscordant(int edgeidx);
     bool IsDiscordant(Edge_t* edge);
