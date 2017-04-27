@@ -77,7 +77,7 @@ SegmentGraph_t::SegmentGraph_t(string graphfile, double ratio){
 		}
 		else if(strs[0]=="edge"){
 			Edge_t tmp(stoi(strs[2]), (strs[3]=="H"?true:false), stoi(strs[4]), (strs[5]=="H"?true:false), stoi(strs[6]));
-			if(IsDiscordant(tmp))
+			if(ratio!=1 && IsDiscordant(tmp))
 				tmp.Weight=(int)tmp.Weight*ratio;
 			vEdges.push_back(tmp);
 			if(tmp.Ind1>maxnode || tmp.Ind2>maxnode)
@@ -2148,7 +2148,7 @@ vector<int> SegmentGraph_t::MincutRecursion(std::map<int,int> CompNodes, vector<
 	}
 	else if(CompNodes.size()<40){
 		vector<int> BestOrder(CompNodes.size(), 0);
-		GRBEnv env=GRBEnv();;
+		GRBEnv env=GRBEnv();
 		GRBModel model=GRBModel(env);
 		model.getEnv().set(GRB_IntParam_LogToConsole, 0);
 		model.getEnv().set(GRB_DoubleParam_TimeLimit, 300.0);

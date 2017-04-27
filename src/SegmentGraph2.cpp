@@ -75,7 +75,7 @@ SegmentGraph_t::SegmentGraph_t(string graphfile, double ratio=1){
 		}
 		else if(strs[0]=="edge"){
 			Edge_t tmp(stoi(strs[2]), (strs[3]=="H"?true:false), stoi(strs[4]), (strs[5]=="H"?true:false), stoi(strs[6]));
-			if(IsDiscordant(tmp))
+			if(ratio!=1 && IsDiscordant(tmp))
 				tmp.Weight=(int)tmp.Weight*ratio;
 			vEdges.push_back(tmp);
 			if(tmp.Ind1>maxnode || tmp.Ind2>maxnode)
