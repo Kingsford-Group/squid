@@ -1,3 +1,7 @@
+Data needed:
+download data to current directory from https://cmu.box.com/s/l6d7jxw133rs36t79sx2jcew68nqy1bn
+decompress with command: tar -xzvf data.tgz
+
 Required software in path:
 1. squid
 2. R
