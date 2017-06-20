@@ -338,7 +338,7 @@ void UpdateReference(const SegmentGraph_t& SegmentGraph, const vector< vector<in
 	RefSequence=newRefSequence;
 };
 
-void BuildChimericSBamRecord(SBamrecord_t& SBamrecord, const std::map<string,int> & RefTable, string bamfile){
+void BuildChimericSBamRecord(SBamrecord_t& SBamrecord, const vector<string>& RefName, string bamfile){
 	time_t CurrentTime;
 	string CurrentTimeStr;
 	time(&CurrentTime);

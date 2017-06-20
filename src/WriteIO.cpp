@@ -54,6 +54,17 @@ void WriteBEDPE(string outputfile, SegmentGraph_t& SegmentGraph, vector< vector<
 			else if(pos1.first==pos2.first && pos1.second>pos2.second && SegmentGraph.vEdges[i].Head2==(Components[pos2.first][pos2.second]<0) && SegmentGraph.vEdges[i].Head1==(Components[pos1.first][pos1.second]>0))
 				flag=true;
 			if(flag){
+				// chech whether prediction is autosomal or on X Y. remove contig/mitochrondia predictions
+				string chrname1=RefName[SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Chr];
+				string chrname2=RefName[SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Chr];
+				if(chrname1.substr(0,3)=="chr")
+					chrname1=chrname1.substr(3);
+				if(chrname2.substr(0,3)=="chr")
+					chrname2=chrname2.substr(3);
+				if((chrname1[0]<'0' || chrname1[0]>'9') && chrname1[0]!='X' && chrname1[0]!='Y')
+					continue;
+				else if((chrname2[0]<'0' || chrname2[0]>'9') && chrname2[0]!='X' && chrname2[0]!='Y')
+					continue;
 				map<Edge_t, vector< pair<int,int> > >::iterator itmap=ExactBP.find(SegmentGraph.vEdges[i]);
 				vector< pair<int,int> > BP;
 				if(itmap==ExactBP.end() || itmap->second.size()==0){

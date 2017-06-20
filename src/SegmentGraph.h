@@ -30,10 +30,12 @@
 using namespace std;
 using namespace BamTools;
 
+extern bool UsingSTAR;
 extern int Concord_Dist_Pos;
 extern int Concord_Dist_Idx;
 extern int Min_Edge_Weight;
 extern uint16_t ReadLen;
+extern double DiscordantRatio;
 
 typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::undirectedS, boost::no_property, boost::property<boost::edge_weight_t, int> > undirected_graph;
 typedef boost::property_map<undirected_graph, boost::edge_weight_t>::type weight_map_type;
@@ -47,63 +49,67 @@ void CountTop(vector< pair<int,int> >& x);
 
 struct MinCutEdge_t
 {
-  unsigned long first;
-  unsigned long second;
+	unsigned long first;
+	unsigned long second;
 };
 
 class SegmentGraph_t{
 public:
-    vector<Node_t> vNodes;
-    vector<Edge_t> vEdges;
-    vector<int> Label;
+	vector<Node_t> vNodes;
+	vector<Edge_t> vEdges;
+	vector<int> Label;
 public:
-    SegmentGraph_t(){};
-    SegmentGraph_t(const vector<int>& RefLength, SBamrecord_t& Chimrecord, string ConcordBamfile);
-    SegmentGraph_t(string graphfile, double ratio=1);
+	SegmentGraph_t(){};
+	SegmentGraph_t(const vector<int>& RefLength, SBamrecord_t& Chimrecord, string ConcordBamfile);
+	SegmentGraph_t(string graphfile);
 
-    bool IsDiscordant(int edgeidx);
-    bool IsDiscordant(Edge_t* edge);
-    bool IsDiscordant(Edge_t edge);
+	bool IsDiscordant(int edgeidx);
+	bool IsDiscordant(Edge_t* edge);
+	bool IsDiscordant(Edge_t edge);
 
-    void BuildNode(const vector<int>& RefLength, SBamrecord_t& Chimrecord, string ConcordBamfile);
-    void BuildEdges(SBamrecord_t& Chimrecord, string ConcordBamfile);
-    void FilterbyWeight();
-    void FilterbyInterleaving();
+	void BuildNode_STAR(const vector<int>& RefLength, SBamrecord_t& Chimrecord, string ConcordBamfile);
+	void BuildNode_BWA(const vector<int>& RefLength, string bamfile);
+	void BuildEdges(SBamrecord_t& Chimrecord, string ConcordBamfile);
+	void FilterbyWeight();
+	void FilterbyInterleaving();
 
-    vector<int> LocateRead(int initialguess, ReadRec_t& ReadRec);
-    vector<int> LocateRead(vector<int>& singleRead_Node, ReadRec_t& ReadRec);
+	vector<int> LocateRead(int initialguess, ReadRec_t& ReadRec);
+	vector<int> LocateRead(vector<int>& singleRead_Node, ReadRec_t& ReadRec);
 
-    void RawEdgesChim(SBamrecord_t& Chimrecord);
-    void RawEdgesOther(SBamrecord_t& Chimrecord, string ConcordBamfile);
-    
-    void FilterEdges();
-    void UpdateNodeLink();
-    void CompressNode();
-    void CompressNode(vector< vector<int> >& Read_Node);
-    void FurtherCompressNode();
-    void OutputDegree(string outputfile);
+	void RawEdgesChim(SBamrecord_t& Chimrecord);
+	void RawEdgesOther(SBamrecord_t& Chimrecord, string ConcordBamfile);
+	void RawEdges(SBamrecord_t& Chimrecord, string bamfile);
+	
+	void FilterEdges();
+	void UpdateNodeLink();
+	void CompressNode();
+	void CompressNode(vector< vector<int> >& Read_Node);
+	void FurtherCompressNode();
+	void OutputDegree(string outputfile);
 
-    int DFS(int node, int curlabelid, vector<int>& Label);
-    void ConnectedComponent(int & maxcomponentsize);
-    void ConnectedComponent();
-    void ExactBreakpoint(SBamrecord_t& Chimrecord, map<Edge_t, vector< pair<int,int> > >& ExactBP);
-    void OutputGraph(string outputfile);
+	int DFS(int node, int curlabelid, vector<int>& Label);
+	void ConnectedComponent(int & maxcomponentsize);
+	void ConnectedComponent();
+	void MultiplyDisEdges();
 
-    vector< vector<int> > Ordering();
-    vector<int> MincutRecursion(std::map<int,int> CompNodes, vector<Edge_t> CompEdges);
-    void GenerateILP(std::map<int,int>& CompNodes, vector<Edge_t>& CompEdges, GRBEnv& env, GRBModel& model, vector<GRBVar>& vGRBVar);
+	void ExactBreakpoint(SBamrecord_t& Chimrecord, map<Edge_t, vector< pair<int,int> > >& ExactBP);
+	void OutputGraph(string outputfile);
 
-   vector< vector<int> > SortComponents(vector< vector<int> >& Components);
-    vector< vector<int> > MergeSingleton(vector< vector<int> >& Components, const vector<int>& RefLength, int LenCutOff=500000);
-    /*bool MergeSingleton_Insert(int singleton, vector< vector<int> >& NewComponents, int LenCutOff); //return whether inserted or not
-    bool MergeSingleton_Insert(vector<int> consecutive, vector< vector<int> >& NewComponents, int LenCutOff);*/
-    bool MergeSingleton_Insert(vector<int> SingletonComponent, vector< vector<int> >& NewComponents);
-    bool MergeSingleton_Insert(vector< vector<int> > Consecutive, vector< vector<int> >& NewComponents);
-    vector< vector<int> > MergeComponents(vector< vector<int> >& Components, int cutoff=5);
+	vector< vector<int> > Ordering();
+	vector<int> MincutRecursion(std::map<int,int> CompNodes, vector<Edge_t> CompEdges);
+	void GenerateILP(std::map<int,int>& CompNodes, vector<Edge_t>& CompEdges, GRBEnv& env, GRBModel& model, vector<GRBVar>& vGRBVar);
 
-    // small functions
-    int GroupConnection(int node, vector<Edge_t*>& Edges, int sumweight, vector<int>& Connection, vector<int>& Label);
-    void GroupSelect(int node, vector<Edge_t*>& Edges, int sumweight, int count, vector<int>& Connection, vector<int>& Label, vector<Edge_t>& ToDelete);
+	vector< vector<int> > SortComponents(vector< vector<int> >& Components);
+	vector< vector<int> > MergeSingleton(vector< vector<int> >& Components, const vector<int>& RefLength, int LenCutOff=500000);
+	/*bool MergeSingleton_Insert(int singleton, vector< vector<int> >& NewComponents, int LenCutOff); //return whether inserted or not
+	bool MergeSingleton_Insert(vector<int> consecutive, vector< vector<int> >& NewComponents, int LenCutOff);*/
+	bool MergeSingleton_Insert(vector<int> SingletonComponent, vector< vector<int> >& NewComponents);
+	bool MergeSingleton_Insert(vector< vector<int> > Consecutive, vector< vector<int> >& NewComponents);
+	vector< vector<int> > MergeComponents(vector< vector<int> >& Components, int cutoff=5);
+
+	// small functions
+	int GroupConnection(int node, vector<Edge_t*>& Edges, int sumweight, vector<int>& Connection, vector<int>& Label);
+	void GroupSelect(int node, vector<Edge_t*>& Edges, int sumweight, int count, vector<int>& Connection, vector<int>& Label, vector<Edge_t>& ToDelete);
 };
 
 #endif

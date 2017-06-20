@@ -22,7 +22,7 @@ int main(int argc, char* argv[]){
 
 		SBamrecord_t Chimrecord;
 		if(Input_Chim_BAM.size()!=0){
-			BuildChimericSBamRecord(Chimrecord, RefTable, Input_Chim_BAM);
+			BuildChimericSBamRecord(Chimrecord, RefName, Input_Chim_BAM);
 		}
 
 		SegmentGraph_t SegmentGraph(RefLength, Chimrecord, Input_BAM);
