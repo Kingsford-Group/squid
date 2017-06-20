@@ -1,0 +1,17 @@
+Required software in path:
+1. squid
+2. R
+3. flux-simulator
+4. fastq-dump
+5. lumpyexpress
+6. delly2
+7. STAR
+8. speedseq
+
+Other required software (specify path in bash script)
+9. chimerascan
+10. fusioncatcher
+11. jaffa
+12. integrate
+13. defuse
+14. picard-tools
