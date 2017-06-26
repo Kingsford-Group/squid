@@ -1,5 +1,5 @@
 Data needed:
-download data to current directory from https://cmu.box.com/s/l6d7jxw133rs36t79sx2jcew68nqy1bn
+download data to current directory from https://cmu.box.com/s/e9u6alp73rfdhfve2a51p6v391vweodq
 decompress with command: tar -xzvf data.tgz
 
 Required software in path:

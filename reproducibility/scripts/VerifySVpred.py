@@ -35,7 +35,7 @@ def BuildReference(RNAbam):
 	fp.close()
 	return [RefTable, RefLength, RefName]
 
-def ReadSQUID(filename, RefName):
+def ReadSQUID(filename):
 	SVs=[]
 	fp=open(filename, 'r')
 	for line in fp:
@@ -43,7 +43,7 @@ def ReadSQUID(filename, RefName):
 			continue
 		strs=line.strip().split("\t")
 		bp1=BP_t(strs[0], int(strs[1]), int(strs[2]), (strs[8]=="-"))
-		bp2=BP_t(strs[3], int(seg2[4]), int(seg2[5]), (strs[9]=="-"))
+		bp2=BP_t(strs[3], int(strs[4]), int(strs[5]), (strs[9]=="-"))
 		sv=SV_t(bp1, bp2)
 		SVs.append(sv)
 	fp.close()
@@ -300,9 +300,7 @@ if __name__=="__main__":
 
 		[trueSV, IDs]=ReadTruth(TrueSVFile)
 		if sys.argv[1]=="1":
-			RNAbam=sys.argv[5]
-			[RefTable, RefLength, RefName]=BuildReference(RNAbam)
-			predSV=ReadSQUID(PredSVFile, RefName)
+			predSV=ReadSQUID(PredSVFile)
 			correctedcount=len(predSV)
 		elif sys.argv[1]=="2":
 			[predSV, correctedcount]=ReadLumpy(PredSVFile)

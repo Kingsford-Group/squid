@@ -3,50 +3,38 @@
 
 #include <iostream>
 #include <fstream>
-#include <string>
 #include <vector>
-#include <map>
 #include <algorithm>
-#include <boost/algorithm/string.hpp>
-#include "SimpleSV.h"
-#include "TRA.h"
+#include <string>
+#include "BP.h"
 
 using namespace std;
 
-struct SV_t{
+class SV_t{
 public:
-    vector<SimpleSV_t> vSimpleSV;
-    vector<TRA_t> vTRA;
-    vector<bool> vSimpleReads;
-    vector<bool> vTRAReads;
-    bool updated;
-    int num;
+	BP_t BP1, BP2;
 public:
-    SV_t(){};
-    SV_t(map<string,int>& RefTable, int numfile, string files[]);
-    void Update2NewPos(map<int,int>& RefLength);
-    static bool tupleCompare(const std::tuple<int,int,int,int>& lhs, const std::tuple<int,int,int,int>& rhs) {
-        if(get<2>(lhs)!=get<2>(rhs))
-            return get<2>(lhs)<get<2>(rhs);
-        else
-            return get<3>(lhs)<get<3>(rhs);
-    }
-    static bool tupleEqual(const std::tuple<int,int,int,int>& lhs, const std::tuple<int,int,int,int>& rhs) {
-        if(get<0>(lhs)!=get<0>(rhs) || get<1>(lhs)!=get<1>(rhs))
-            return false;
-        else
-            return true;
-    }
-    vector< tuple<int,int,int,int> > UpdateNextRound2new(SV_t svnext, map<int,int>& RefLength);
-    vector< tuple<int,int,int,int> > UpdateNextRound2old(SV_t svnext, map<int,int>& RefLength);
-    void WriteNextRoundBPPos(vector< tuple<int,int,int,int> >& BreakPoint, char* outputfile);
-    void WriteNextRoundBPPos(vector<string>& RefName, vector< tuple<int,int,int,int> >& BreakPoint, char* outputfile);
-    void WritenewSVPos(vector<string>& RefName, map<int,int>& RefLength, string outputfile);
-    void WriteoldSVPos(vector<string>& RefName, map<int,int>& RefLength, string outputfile);
-    void WriteFilterednewSVPos(vector<string>& RefName, map<int,int>& RefLength, string outputfile);
-    void WriteFilteredoldSVPos(vector<string>& RefName, map<int,int>& RefLength, string outputfile);
-    bool IsIntersect(SV_t svrhs);
-    void IsCoveredbyReads(string bedfile, map<string,int>& RefTable, map<int,int>& RefLength, bool is_old_coordicate, int threshold=2);
+	SV_t(){};
+	SV_t(BP_t _BP1, BP_t _BP2){
+		if(_BP1<_BP2){
+			BP1=_BP1;
+			BP2=_BP2;
+		}
+		else{
+			BP1=_BP2;
+			BP2=_BP1;
+		}
+	};
+
+	bool operator < (const SV_t& rhs) const{
+		if(BP1!=rhs.BP1)
+			return BP1<rhs.BP1;
+		else
+			return BP2<rhs.BP2;
+	};
+	bool operator == (const SV_t& rhs) const{
+		return (BP1==rhs.BP1 && BP2==rhs.BP2);
+	};
 };
 
 #endif
