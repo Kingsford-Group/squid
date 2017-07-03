@@ -15,7 +15,7 @@
 #include "api/BamReader.h"
 #include "api/BamAlignment.h"
 #include "api/BamWriter.h"
-#include <boost/algorithm/string.hpp>
+#include "boost/algorithm/string.hpp"
 
 using namespace std;
 using namespace BamTools;

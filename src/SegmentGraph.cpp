@@ -436,7 +436,7 @@ void SegmentGraph_t::BuildNode_STAR(const vector<int>& RefLength, SBamrecord_t& 
 						curStartPos=lastCurser; curEndPos=lastCurser;
 						markedNodeStart=lastCurser; markedNodeChr=tmp.Chr;
 					}
-					if(disStartPos!=-1 && !isClusternSplit && disCount>min(3.0, 4.0*(disEndPos-disStartPos)/ReadLen)){
+					if(disStartPos!=-1 && !isClusternSplit && disCount>min(5.0, 4.0*(disEndPos-disStartPos)/ReadLen)){
 						if(vNodes.size()!=0 && vNodes.back().Chr==(itdisend-1)->RefID && disEndPos-vNodes.back().Position-vNodes.back().Length<thresh*20)
 							vNodes.back().Length+=disEndPos-vNodes.back().Position-vNodes.back().Length;
 						else{
@@ -1509,7 +1509,12 @@ void SegmentGraph_t::RawEdgesOther(SBamrecord_t& Chimrecord, string bamfile){
 				continue;
 			else
 				lastreadrec=readrec;
-			if((readrec.FirstRead.front().ReadPos <= 15 || readrec.FirstLowPhred) && (readrec.SecondMate.front().ReadPos<=15 || readrec.SecondLowPhred)){ // only consider first mate record, to avoid doubling edge weight.
+			bool whetherbuildedge=false;
+			if(readrec.FirstRead.size()==0 || readrec.SecondMate.size()==0)
+				whetherbuildedge=true;
+			else if((readrec.FirstRead.front().ReadPos <= 15 || readrec.FirstLowPhred) && (readrec.SecondMate.front().ReadPos<=15 || readrec.SecondLowPhred))
+				whetherbuildedge=true;
+			if(whetherbuildedge){ // only consider first mate record, to avoid doubling edge weight.
 				vector<int> tmpRead_Node=LocateRead(firstfrontindex, readrec);
 				if(tmpRead_Node[0]!=-1)
 					firstfrontindex=tmpRead_Node[0];
