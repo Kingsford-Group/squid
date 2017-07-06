@@ -2,7 +2,6 @@
 
 import sys
 import pysam
-sys.path.append('../HCC1954')
 from BPSVclass import *
 
 def ReadTruth(filename):
