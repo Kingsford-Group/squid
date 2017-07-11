@@ -23,7 +23,7 @@ public:
     int32_t ReadPos;
     int32_t MatchRead;
     int32_t MatchRef;
-    uint16_t MapQual;
+    uint8_t MapQual;
     bool IsReverse;
     bool IsFirstRead;
 public:

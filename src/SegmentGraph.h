@@ -21,7 +21,7 @@
 #include "boost/graph/stoer_wagner_min_cut.hpp"
 #include "boost/property_map/property_map.hpp"
 #include "boost/typeof/typeof.hpp"
-#include "gurobi_c++.h"
+#include "glpk.h"
 #include "BPEdge.h"
 #include "BPNode.h"
 #include "ReadRec.h"
@@ -97,7 +97,7 @@ public:
 
 	vector< vector<int> > Ordering();
 	vector<int> MincutRecursion(std::map<int,int> CompNodes, vector<Edge_t> CompEdges);
-	void GenerateILP(std::map<int,int>& CompNodes, vector<Edge_t>& CompEdges, GRBEnv& env, GRBModel& model, vector<GRBVar>& vGRBVar);
+	void GenerateILP(std::map<int,int>& CompNodes, vector<Edge_t>& CompEdges, vector< vector<int> >& Z, vector<int>& X);
 
 	vector< vector<int> > SortComponents(vector< vector<int> >& Components);
 	vector< vector<int> > MergeSingleton(vector< vector<int> >& Components, const vector<int>& RefLength, int LenCutOff=500000);

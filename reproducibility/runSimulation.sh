@@ -1,34 +1,26 @@
 #!/bin/bash
 
-OutDir=./
-GenomeDir=./genome
-AnnotationFile=./annotation/annot.gtf
-BamtoolsDir=./bamtools
+DataFolder=./simulationdata
+threads=8
 
-mkdir -p OutDir
-
-# build executables
-cp scripts/SimSVGenome.sh bin/
 cp scripts/SVcalling.sh bin/
-cp scripts/extractSTAR.sh bin/
-chmod a+x ./bin/SimSVGenome.sh
-chmod a+x ./bin/SVcalling.sh
-chmod a+x ./bin/extractSTAR.sh
-g++ -std=c++11 -o bin/SV2newpos scripts/SV2newpos.cpp scripts/GtfTrans.cpp scripts/SV.cpp scripts/TRA.cpp scripts/SimpleSV.cpp -g
-g++ -std=c++11 -o bin/GmapSV scripts/GmapSV.cpp -g
-g++ -std=c++11 -o bin/NucmerSV2 scripts/NucmerSV2.cpp -g
-g++ -std=c++11 -o bin/mergesplit scripts/mergesplit.cpp -I ${BamtoolsDir}/include/ -L ${BamtoolsDir}/lib/ -lbamtools -lz -g -Wl,-rpath,${BamtoolsDir}/lib
 
-for ((i=200}; i<900; i+=300)); do
-	./bin/SimSVGenome.sh -g ${GenomeDir} -p ${OutDir}/SVRNA${i}_1 -a ${AnnotationFile} -seq 21 -inv ${i} -ins ${i} -del ${i} -dup ${i} -tra 2 -RNA
-	./bin/SimSVGenome.sh -g ${GenomeDir} -p ${OutDir}/SVRNA${i}_2 -a ${AnnotationFile} -seq 25 -inv ${i} -ins ${i} -del ${i} -dup ${i} -tra 2 -RNA
-	./bin/SimSVGenome.sh -g ${GenomeDir} -p ${OutDir}/SVRNA${i}_3 -a ${AnnotationFile} -seq 28 -inv ${i} -ins ${i} -del ${i} -dup ${i} -tra 2 -RNA
-	./bin/SimSVGenome.sh -g ${GenomeDir} -p ${OutDir}/SVRNA${i}_4 -a ${AnnotationFile} -seq 30 -inv ${i} -ins ${i} -del ${i} -dup ${i} -tra 2 -RNA
-done
+for ((i=2; i<9; i+=3)); do
+	for ((j=1; j<5; j++)); do
+		mkdir -p $DataFolder/SV${i}00_${j}/Alignments
 
-for ((i=200; i<900; i+=300)); do
-	./bin/SVcalling.sh -p ${OutDir}/SVRNA${i}_1
-	./bin/SVcalling.sh -p ${OutDir}/SVRNA${i}_2
-	./bin/SVcalling.sh -p ${OutDir}/SVRNA${i}_3
-	./bin/SVcalling.sh -p ${OutDir}/SVRNA${i}_4
+		# Aligning reads with STAR
+		if [ ! -d $DataFolder/SV${i}00_${j}/WholeGenome/STAR_genome_rearranged ]; then
+			STAR --runThreadN ${threads} --runMode genomeGenerate --genomeDir $DataFolder/SV${i}00_${j}/WholeGenome/STAR_genome_rearranged --genomeFastaFiles $DataFolder/SV${i}00_${j}/WholeGenome/genome_rearranged.fa
+		fi
+		mkdir -p $DataFolder/SV${i}00_${j}/Alignments/Star_rearranged
+		STAR --runThreadN ${threads} --genomeDir $DataFolder/SV${i}00_${j}/WholeGenome/STAR_genome_rearranged/ --readFilesIn $DataFolder/SV${i}00_${j}/Reads/RNA1.fq.gz $DataFolder/SV${i}00_${j}/Reads/RNA2.fq.gz --readFilesCommand gunzip -c --outFileNamePrefix $DataFolder/SV${i}00_${j}/Alignments/Star_rearranged/ --outSAMtype BAM SortedByCoordinate --outReadsUnmapped Fastx --chimSegmentMin 20 --outSAMstrandField intronMotif --limitBAMsortRAM 21943468974
+
+		# Aligning reads with SpeedSeq
+		mkdir -p $DataFolder/SV${i}00_${j}/Alignments/SpeedSeq
+		speedseq align -R "@RG\tID:id\tSM:samplename\tLB:lib" -t ${threads} -o $DataFolder/SV${i}00_${j}/Alignments/SpeedSeq/Aligned $DataFolder/SV${i}00_${j}/WholeGenome/genome_rearranged.fa $DataFolder/SV${i}00_${j}/Reads/RNA1.fq.gz $DataFolder/SV${i}00_${j}/Reads/RNA2.fq.gz
+
+		# Call TSVs with different methods
+		./bin/SVcalling.sh -p ${OutDir}/SVRNA${i}00_${j}
+	done
 done

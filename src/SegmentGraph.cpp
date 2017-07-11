@@ -2751,11 +2751,9 @@ vector<int> SegmentGraph_t::MincutRecursion(std::map<int,int> CompNodes, vector<
 	}
 	else if(CompNodes.size()<40){
 		vector<int> BestOrder(CompNodes.size(), 0);
-		GRBEnv env=GRBEnv();
-		GRBModel model=GRBModel(env);
-		model.getEnv().set(GRB_IntParam_LogToConsole, 0);
-		model.getEnv().set(GRB_DoubleParam_TimeLimit, 300.0);
-		vector<GRBVar> vGRBVar;
+		glp_prob *mip=glp_create_prob();
+		glp_set_prob_name(mip, "GSG");
+		glp_set_obj_dir(mip, GLP_MAX);
 		int edgeidx=0;
 		std::map<int,int>::iterator itnodeend=CompNodes.end(); itnodeend--;
 		for(std::map<int,int>::iterator itnode=CompNodes.begin(); itnode!=itnodeend; itnode++){
@@ -2770,25 +2768,17 @@ vector<int> SegmentGraph_t::MincutRecursion(std::map<int,int> CompNodes, vector<
 				CompEdges.push_back(tmp);
 			}
 		}
-		GenerateILP(CompNodes, CompEdges, env, model, vGRBVar);
-		model.optimize();
 		vector< vector<int> > Z; Z.resize(CompNodes.size());
-		int count=0;
-		for(int j=0; j<Z.size(); j++){
-			Z[j].resize(CompNodes.size(), 0);
-			for(int k=j+1; k<CompNodes.size(); k++){
-				Z[j][k]=(int)vGRBVar[(int)CompNodes.size()+(int)CompEdges.size()+count].get(GRB_DoubleAttr_X);
-				count++;
-			}
-		}
+		vector<int> X; X.resize(CompNodes.size());
 		for(int j=0; j<Z.size(); j++)
-			for(int k=0; k<j; k++)
-				Z[j][k]=1-Z[k][j];
+			Z[j].resize(CompNodes.size(), 0);
+		GenerateILP(CompNodes, CompEdges, Z, X);
+
 		for(std::map<int,int>::iterator it=CompNodes.begin(); it!=CompNodes.end(); it++){
 			int pos=CompNodes.size();
 			for(int k=0; k<Z.size(); k++)
 				pos-=Z[it->second][k];
-			BestOrder[pos-1]=(vGRBVar[it->second].get(GRB_DoubleAttr_X)>0.5)?(it->first+1):(-it->first-1);
+			BestOrder[pos-1]=(X[it->second]>0.5)?(it->first+1):(-it->first-1);
 		}
 		return BestOrder;
 	}
@@ -2805,11 +2795,6 @@ vector<int> SegmentGraph_t::MincutRecursion(std::map<int,int> CompNodes, vector<
 		int w = boost::stoer_wagner_min_cut(g, get(boost::edge_weight, g), boost::parity_map(parities));
 		if(w>1){
 			vector<int> BestOrder(CompNodes.size(), 0);
-			GRBEnv env=GRBEnv();;
-			GRBModel model=GRBModel(env);
-			model.getEnv().set(GRB_IntParam_LogToConsole, 0);
-			model.getEnv().set(GRB_DoubleParam_TimeLimit, 300.0);
-			vector<GRBVar> vGRBVar;
 			int edgeidx=0;
 			std::map<int,int>::iterator itnodeend=CompNodes.end(); itnodeend--;
 			for(std::map<int,int>::iterator itnode=CompNodes.begin(); itnode!=itnodeend; itnode++){
@@ -2824,25 +2809,17 @@ vector<int> SegmentGraph_t::MincutRecursion(std::map<int,int> CompNodes, vector<
 					CompEdges.push_back(tmp);
 				}
 			}
-			GenerateILP(CompNodes, CompEdges, env, model, vGRBVar);
-			model.optimize();
 			vector< vector<int> > Z; Z.resize(CompNodes.size());
-			int count=0;
-			for(int j=0; j<Z.size(); j++){
-				Z[j].resize(CompNodes.size(), 0);
-				for(int k=j+1; k<CompNodes.size(); k++){
-					Z[j][k]=(int)vGRBVar[(int)CompNodes.size()+(int)CompEdges.size()+count].get(GRB_DoubleAttr_X);
-					count++;
-				}
-			}
+			vector<int> X; X.resize(CompNodes.size());
 			for(int j=0; j<Z.size(); j++)
-				for(int k=0; k<j; k++)
-					Z[j][k]=1-Z[k][j];
+				Z[j].resize(CompNodes.size(), 0);
+			GenerateILP(CompNodes, CompEdges, Z, X);
+
 			for(std::map<int,int>::iterator it=CompNodes.begin(); it!=CompNodes.end(); it++){
 				int pos=CompNodes.size();
 				for(int k=0; k<Z.size(); k++)
 					pos-=Z[it->second][k];
-				BestOrder[pos-1]=(vGRBVar[it->second].get(GRB_DoubleAttr_X)>0.5)?(it->first+1):(-it->first-1);
+				BestOrder[pos-1]=(X[it->second]>0.5)?(it->first+1):(-it->first-1);
 			}
 			return BestOrder;
 		}
@@ -2928,79 +2905,184 @@ vector<int> SegmentGraph_t::MincutRecursion(std::map<int,int> CompNodes, vector<
 	}
 };
 
-void SegmentGraph_t::GenerateILP(std::map<int,int>& CompNodes, vector<Edge_t>& CompEdges, GRBEnv& env, GRBModel& model, vector<GRBVar>& vGRBVar){
-	vector<string> nodenames, edgenames, pairnodenames;
-	int nodeoffset=0, edgeoffset=CompNodes.size(), pairoffset=CompNodes.size()+CompEdges.size();
+void SegmentGraph_t::GenerateILP(map<int,int>& CompNodes, vector<Edge_t>& CompEdges, vector< vector<int> >& Z, vector<int>& X){
+	glp_prob *mip=glp_create_prob();
+	glp_set_prob_name(mip, "GSG");
+	glp_set_obj_dir(mip, GLP_MAX);
+
+	glp_add_cols(mip, CompEdges.size()+CompNodes.size()+(CompNodes.size()-1)*(CompNodes.size())/2);
+	int edgeoffset=CompNodes.size();
+	int pairoffset=CompNodes.size()+CompEdges.size();
 	for(int i=0; i<CompNodes.size(); i++){
-		nodenames.push_back("y"+to_string(i));
-		for(int j=i+1; j<CompNodes.size(); j++)
-			pairnodenames.push_back("z"+to_string(i)+to_string(j));
+		glp_set_col_name(mip, i+1, ("y"+to_string(i)).c_str());
+		glp_set_col_bnds(mip, i+1, GLP_DB, 0, 1);
+		glp_set_obj_coef(mip, i+1, 0);
+		glp_set_col_kind(mip, i+1, GLP_BV);
 	}
-	for(int i=0; i<CompEdges.size(); i++)
-		edgenames.push_back("x"+to_string(i));
-	// In all variables, node first, edge second, pairorder last
-	for(int i=0; i<nodenames.size(); i++){
-		GRBVar tmp=model.addVar(0.0, 1.0, 0.0, GRB_BINARY, nodenames[i]);
-		vGRBVar.push_back(tmp);
-	}
-	for(int i=0; i<edgenames.size(); i++){
-		GRBVar tmp=model.addVar(0.0, 1.0, CompEdges[i].Weight, GRB_BINARY, edgenames[i]);
-		vGRBVar.push_back(tmp);
-	}
-	int count=0, previndex=0;
-	for(int i=0; i<pairnodenames.size(); i++){
-		GRBVar tmp=model.addVar(0.0, 1.0, 0.0, GRB_BINARY, pairnodenames[i]);
-		vGRBVar.push_back(tmp);
-	}
-	model.update();
-	model.set(GRB_IntAttr_ModelSense, GRB_MAXIMIZE);
-	int numconstr=0;
 	for(int i=0; i<CompEdges.size(); i++){
-		int pairind=0; // index of corresponding pairnodenames in variable vector
+		glp_set_col_name(mip, edgeoffset+i+1, ("x"+to_string(i)).c_str());
+		glp_set_col_bnds(mip, edgeoffset+i+1, GLP_DB, 0, 1);
+		glp_set_obj_coef(mip, edgeoffset+i+1, CompEdges[i].Weight);
+		glp_set_col_kind(mip, edgeoffset+i+1, GLP_BV);
+	}
+	int count=0;
+	for(int i=0; i<CompNodes.size(); i++)
+		for(int j=i+1; j<CompNodes.size(); j++){
+			glp_set_col_name(mip, pairoffset+count+1, ("z"+to_string(i)+to_string(j)).c_str());
+			glp_set_col_bnds(mip, pairoffset+count+1, GLP_DB, 0, 1);
+			glp_set_obj_coef(mip, pairoffset+count+1, 0);
+			glp_set_col_kind(mip, pairoffset+count+1, GLP_BV);
+			count++;
+		}
+
+	count=0;
+	int ia[12*CompEdges.size()+(CompNodes.size())*(CompNodes.size()-1)*(CompNodes.size()-2)/2+1];
+	int ja[12*CompEdges.size()+(CompNodes.size())*(CompNodes.size()-1)*(CompNodes.size()-2)/2+1];
+	double ar[12*CompEdges.size()+(CompNodes.size())*(CompNodes.size()-1)*(CompNodes.size()-2)/2+1];
+	glp_add_rows(mip, 4*(int)CompEdges.size()+(CompNodes.size())*(CompNodes.size()-1)*(CompNodes.size()-2)/6); // this doesn't containt he second part, topological order contains
+	for(int i=0; i<CompEdges.size(); i++){
+		int pairind=0; // index of corresponding pairnode
 		for(int j=0; j<min(CompNodes[CompEdges[i].Ind1], CompNodes[CompEdges[i].Ind2]); j++)
 			pairind+=(int)CompNodes.size()-j-1;
 		pairind+=abs(CompNodes[CompEdges[i].Ind1]-CompNodes[CompEdges[i].Ind2])-1;
 		if((CompNodes[CompEdges[i].Ind1]<CompNodes[CompEdges[i].Ind2] && CompEdges[i].Head1==false && CompEdges[i].Head2==true) || (CompNodes[CompEdges[i].Ind1]>CompNodes[CompEdges[i].Ind2] && CompEdges[i].Head1==true && CompEdges[i].Head2==false)){
-			model.addConstr(vGRBVar[edgeoffset+i] <= vGRBVar[CompNodes[CompEdges[i].Ind1]] - vGRBVar[CompNodes[CompEdges[i].Ind2]] + 1, "c"+to_string(numconstr++));
-			model.addConstr(vGRBVar[edgeoffset+i] <= vGRBVar[CompNodes[CompEdges[i].Ind2]] - vGRBVar[CompNodes[CompEdges[i].Ind1]] + 1, "c"+to_string(numconstr++));
-			model.addConstr(vGRBVar[edgeoffset+i] <= vGRBVar[CompNodes[CompEdges[i].Ind1]] - vGRBVar[pairoffset+pairind] + 1, "c"+to_string(numconstr++));
-			model.addConstr(vGRBVar[edgeoffset+i] <= vGRBVar[pairoffset+pairind] - vGRBVar[CompNodes[CompEdges[i].Ind1]] + 1, "c"+to_string(numconstr++));
+			glp_set_row_name(mip, i*4+1, ("c"+to_string(i*4+1)).c_str());
+			glp_set_row_bnds(mip, i*4+1, GLP_UP, 0, 1);
+			ia[count+1]=i*4+1; ja[count+1]=edgeoffset+i+1; ar[count+1]=1;
+			ia[count+2]=i*4+1; ja[count+2]=CompNodes[CompEdges[i].Ind1]+1; ar[count+2]=-1;
+			ia[count+3]=i*4+1; ja[count+3]=CompNodes[CompEdges[i].Ind2]+1; ar[count+3]=1;
+
+			glp_set_row_name(mip, i*4+2, ("c"+to_string(i*4+2)).c_str());
+			glp_set_row_bnds(mip, i*4+2, GLP_UP, 0, 1);
+			ia[count+4]=i*4+2; ja[count+4]=edgeoffset+i+1; ar[count+4]=1;
+			ia[count+5]=i*4+2; ja[count+5]=CompNodes[CompEdges[i].Ind1]+1; ar[count+5]=1;
+			ia[count+6]=i*4+2; ja[count+6]=CompNodes[CompEdges[i].Ind2]+1; ar[count+6]=-1;
+
+			glp_set_row_name(mip, i*4+3, ("c"+to_string(i*4+3)).c_str());
+			glp_set_row_bnds(mip, i*4+3, GLP_UP, 0, 1);
+			ia[count+7]=i*4+3; ja[count+7]=edgeoffset+i+1; ar[count+7]=1;
+			ia[count+8]=i*4+3; ja[count+8]=pairoffset+pairind+1; ar[count+8]=-1;
+			ia[count+9]=i*4+3; ja[count+9]=CompNodes[CompEdges[i].Ind1]+1; ar[count+9]=1;
+
+			glp_set_row_name(mip, i*4+4, ("c"+to_string(i*4+4)).c_str());
+			glp_set_row_bnds(mip, i*4+4, GLP_UP, 0, 1);
+			ia[count+10]=i*4+4; ja[count+10]=edgeoffset+i+1; ar[count+10]=1;
+			ia[count+11]=i*4+4; ja[count+11]=pairoffset+pairind+1; ar[count+11]=1;
+			ia[count+12]=i*4+4; ja[count+12]=CompNodes[CompEdges[i].Ind1]+1; ar[count+12]=-1;
 		}
 		else if(CompEdges[i].Head1==false && CompEdges[i].Head2==false){
-			model.addConstr(vGRBVar[edgeoffset+i] <= vGRBVar[CompNodes[CompEdges[i].Ind1]] + vGRBVar[CompNodes[CompEdges[i].Ind2]], "c"+to_string(numconstr++));
-			model.addConstr(vGRBVar[edgeoffset+i] <= 2 - vGRBVar[CompNodes[CompEdges[i].Ind1]] - vGRBVar[CompNodes[CompEdges[i].Ind2]], "c"+to_string(numconstr++));
+			glp_set_row_name(mip, i*4+1, ("c"+to_string(i*4+1)).c_str());
+			glp_set_row_bnds(mip, i*4+1, GLP_UP, 0, 0);
+			ia[count+1]=i*4+1; ja[count+1]=edgeoffset+i+1; ar[count+1]=1;
+			ia[count+2]=i*4+1; ja[count+2]=CompNodes[CompEdges[i].Ind1]+1; ar[count+2]=-1;
+			ia[count+3]=i*4+1; ja[count+3]=CompNodes[CompEdges[i].Ind2]+1; ar[count+3]=-1;
+
+			glp_set_row_name(mip, i*4+2, ("c"+to_string(i*4+2)).c_str());
+			glp_set_row_bnds(mip, i*4+2, GLP_UP, 0, 2);
+			ia[count+4]=i*4+2; ja[count+4]=edgeoffset+i+1; ar[count+4]=1;
+			ia[count+5]=i*4+2; ja[count+5]=CompNodes[CompEdges[i].Ind1]+1; ar[count+5]=1;
+			ia[count+6]=i*4+2; ja[count+6]=CompNodes[CompEdges[i].Ind2]+1; ar[count+6]=1;
+
 			if(CompNodes[CompEdges[i].Ind1]<CompNodes[CompEdges[i].Ind2]){
-				model.addConstr(vGRBVar[edgeoffset+i] <= vGRBVar[CompNodes[CompEdges[i].Ind1]] - vGRBVar[pairoffset+pairind] + 1, "c"+to_string(numconstr++));
-				model.addConstr(vGRBVar[edgeoffset+i] <= vGRBVar[pairoffset+pairind] - vGRBVar[CompNodes[CompEdges[i].Ind1]] + 1, "c"+to_string(numconstr++));
+				glp_set_row_name(mip, i*4+3, ("c"+to_string(i*4+3)).c_str());
+				glp_set_row_bnds(mip, i*4+3, GLP_UP, 0, 1);
+				ia[count+7]=i*4+3; ja[count+7]=edgeoffset+i+1; ar[count+7]=1;
+				ia[count+8]=i*4+3; ja[count+8]=pairoffset+pairind+1; ar[count+8]=-1;
+				ia[count+9]=i*4+3; ja[count+9]=CompNodes[CompEdges[i].Ind1]+1; ar[count+9]=1;
+
+				glp_set_row_name(mip, i*4+4, ("c"+to_string(i*4+4)).c_str());
+				glp_set_row_bnds(mip, i*4+4, GLP_UP, 0, 1);
+				ia[count+10]=i*4+4; ja[count+10]=edgeoffset+i+1; ar[count+10]=1;
+				ia[count+11]=i*4+4; ja[count+11]=pairoffset+pairind+1; ar[count+11]=1;
+				ia[count+12]=i*4+4; ja[count+12]=CompNodes[CompEdges[i].Ind1]+1; ar[count+12]=-1;
 			}
 			else{
-				model.addConstr(vGRBVar[edgeoffset+i] <= vGRBVar[CompNodes[CompEdges[i].Ind2]] - vGRBVar[pairoffset+pairind] + 1, "c"+to_string(numconstr++));
-				model.addConstr(vGRBVar[edgeoffset+i] <= vGRBVar[pairoffset+pairind] - vGRBVar[CompNodes[CompEdges[i].Ind2]] + 1, "c"+to_string(numconstr++));
+				glp_set_row_name(mip, i*4+3, ("c"+to_string(i*4+3)).c_str());
+				glp_set_row_bnds(mip, i*4+3, GLP_UP, 0, 1);
+				ia[count+7]=i*4+3; ja[count+7]=edgeoffset+i+1; ar[count+7]=1;
+				ia[count+8]=i*4+3; ja[count+8]=pairoffset+pairind+1; ar[count+8]=-1;
+				ia[count+9]=i*4+3; ja[count+9]=CompNodes[CompEdges[i].Ind2]+1; ar[count+9]=1;
+
+				glp_set_row_name(mip, i*4+4, ("c"+to_string(i*4+4)).c_str());
+				glp_set_row_bnds(mip, i*4+4, GLP_UP, 0, 1);
+				ia[count+10]=i*4+4; ja[count+10]=edgeoffset+i+1; ar[count+10]=1;
+				ia[count+11]=i*4+4; ja[count+11]=pairoffset+pairind+1; ar[count+11]=1;
+				ia[count+12]=i*4+4; ja[count+12]=CompNodes[CompEdges[i].Ind2]+1; ar[count+12]=-1;
 			}
 		}
 		else if(CompEdges[i].Head1==true && CompEdges[i].Head2==true){
-			model.addConstr(vGRBVar[edgeoffset+i] <= vGRBVar[CompNodes[CompEdges[i].Ind1]] + vGRBVar[CompNodes[CompEdges[i].Ind2]], "c"+to_string(numconstr++));
-			model.addConstr(vGRBVar[edgeoffset+i] <= 2 - vGRBVar[CompNodes[CompEdges[i].Ind1]] - vGRBVar[CompNodes[CompEdges[i].Ind2]], "c"+to_string(numconstr++));
+			glp_set_row_name(mip, i*4+1, ("c"+to_string(i*4+1)).c_str());
+			glp_set_row_bnds(mip, i*4+1, GLP_UP, 0, 0);
+			ia[count+1]=i*4+1; ja[count+1]=edgeoffset+i+1; ar[count+1]=1;
+			ia[count+2]=i*4+1; ja[count+2]=CompNodes[CompEdges[i].Ind1]+1; ar[count+2]=-1;
+			ia[count+3]=i*4+1; ja[count+3]=CompNodes[CompEdges[i].Ind2]+1; ar[count+3]=-1;
+
+			glp_set_row_name(mip, i*4+2, ("c"+to_string(i*4+2)).c_str());
+			glp_set_row_bnds(mip, i*4+2, GLP_UP, 0, 2);
+			ia[count+4]=i*4+2; ja[count+4]=edgeoffset+i+1; ar[count+4]=1;
+			ia[count+5]=i*4+2; ja[count+5]=CompNodes[CompEdges[i].Ind1]+1; ar[count+5]=1;
+			ia[count+6]=i*4+2; ja[count+6]=CompNodes[CompEdges[i].Ind2]+1; ar[count+6]=1;
+
 			if(CompNodes[CompEdges[i].Ind1]<CompNodes[CompEdges[i].Ind2]){
-				model.addConstr(vGRBVar[edgeoffset+i] <= vGRBVar[CompNodes[CompEdges[i].Ind2]] - vGRBVar[pairoffset+pairind] + 1, "c"+to_string(numconstr++));
-				model.addConstr(vGRBVar[edgeoffset+i] <= vGRBVar[pairoffset+pairind] - vGRBVar[CompNodes[CompEdges[i].Ind2]] + 1, "c"+to_string(numconstr++));
+				glp_set_row_name(mip, i*4+3, ("c"+to_string(i*4+3)).c_str());
+				glp_set_row_bnds(mip, i*4+3, GLP_UP, 0, 1);
+				ia[count+7]=i*4+3; ja[count+7]=edgeoffset+i+1; ar[count+7]=1;
+				ia[count+8]=i*4+3; ja[count+8]=pairoffset+pairind+1; ar[count+8]=-1;
+				ia[count+9]=i*4+3; ja[count+9]=CompNodes[CompEdges[i].Ind2]+1; ar[count+9]=1;
+
+				glp_set_row_name(mip, i*4+4, ("c"+to_string(i*4+4)).c_str());
+				glp_set_row_bnds(mip, i*4+4, GLP_UP, 0, 1);
+				ia[count+10]=i*4+4; ja[count+10]=edgeoffset+i+1; ar[count+10]=1;
+				ia[count+11]=i*4+4; ja[count+11]=pairoffset+pairind+1; ar[count+11]=1;
+				ia[count+12]=i*4+4; ja[count+12]=CompNodes[CompEdges[i].Ind2]+1; ar[count+12]=-1;
 			}
 			else{
-				model.addConstr(vGRBVar[edgeoffset+i] <= vGRBVar[CompNodes[CompEdges[i].Ind1]] - vGRBVar[pairoffset+pairind] + 1, "c"+to_string(numconstr++));
-				model.addConstr(vGRBVar[edgeoffset+i] <= vGRBVar[pairoffset+pairind] - vGRBVar[CompNodes[CompEdges[i].Ind1]] + 1, "c"+to_string(numconstr++));
+				glp_set_row_name(mip, i*4+3, ("c"+to_string(i*4+3)).c_str());
+				glp_set_row_bnds(mip, i*4+3, GLP_UP, 0, 1);
+				ia[count+7]=i*4+3; ja[count+7]=edgeoffset+i+1; ar[count+7]=1;
+				ia[count+8]=i*4+3; ja[count+8]=pairoffset+pairind+1; ar[count+8]=-1;
+				ia[count+9]=i*4+3; ja[count+9]=CompNodes[CompEdges[i].Ind1]+1; ar[count+9]=1;
+
+				glp_set_row_name(mip, i*4+4, ("c"+to_string(i*4+4)).c_str());
+				glp_set_row_bnds(mip, i*4+4, GLP_UP, 0, 1);
+				ia[count+10]=i*4+4; ja[count+10]=edgeoffset+i+1; ar[count+10]=1;
+				ia[count+11]=i*4+4; ja[count+11]=pairoffset+pairind+1; ar[count+11]=1;
+				ia[count+12]=i*4+4; ja[count+12]=CompNodes[CompEdges[i].Ind1]+1; ar[count+12]=-1;
 			}
 		}
 		else{
-			model.addConstr(vGRBVar[edgeoffset+i] <= vGRBVar[CompNodes[CompEdges[i].Ind1]] - vGRBVar[CompNodes[CompEdges[i].Ind2]] + 1, "c"+to_string(numconstr++));
-			model.addConstr(vGRBVar[edgeoffset+i] <= vGRBVar[CompNodes[CompEdges[i].Ind2]] - vGRBVar[CompNodes[CompEdges[i].Ind1]] + 1, "c"+to_string(numconstr++));
-			model.addConstr(vGRBVar[edgeoffset+i] <= vGRBVar[CompNodes[CompEdges[i].Ind1]] + vGRBVar[pairoffset+pairind], "c"+to_string(numconstr++));
-			model.addConstr(vGRBVar[edgeoffset+i] <= 2 - vGRBVar[pairoffset+pairind] - vGRBVar[CompNodes[CompEdges[i].Ind1]], "c"+to_string(numconstr++));
+			glp_set_row_name(mip, i*4+1, ("c"+to_string(i*4+1)).c_str());
+			glp_set_row_bnds(mip, i*4+1, GLP_UP, 0, 1);
+			ia[count+1]=i*4+1; ja[count+1]=edgeoffset+i+1; ar[count+1]=1;
+			ia[count+2]=i*4+1; ja[count+2]=CompNodes[CompEdges[i].Ind1]+1; ar[count+2]=-1;
+			ia[count+3]=i*4+1; ja[count+3]=CompNodes[CompEdges[i].Ind2]+1; ar[count+3]=1;
+
+			glp_set_row_name(mip, i*4+2, ("c"+to_string(i*4+2)).c_str());
+			glp_set_row_bnds(mip, i*4+2, GLP_UP, 0, 1);
+			ia[count+4]=i*4+2; ja[count+4]=edgeoffset+i+1; ar[count+4]=1;
+			ia[count+5]=i*4+2; ja[count+5]=CompNodes[CompEdges[i].Ind1]+1; ar[count+5]=1;
+			ia[count+6]=i*4+2; ja[count+6]=CompNodes[CompEdges[i].Ind2]+1; ar[count+6]=-1;
+
+			glp_set_row_name(mip, i*4+3, ("c"+to_string(i*4+3)).c_str());
+			glp_set_row_bnds(mip, i*4+3, GLP_UP, 0, 2);
+			ia[count+7]=i*4+3; ja[count+7]=edgeoffset+i+1; ar[count+7]=1;
+			ia[count+8]=i*4+3; ja[count+8]=pairoffset+pairind+1; ar[count+8]=1;
+			ia[count+9]=i*4+3; ja[count+9]=CompNodes[CompEdges[i].Ind1]+1; ar[count+9]=1;
+
+			glp_set_row_name(mip, i*4+4, ("c"+to_string(i*4+4)).c_str());
+			glp_set_row_bnds(mip, i*4+4, GLP_UP, 0, 0);
+			ia[count+10]=i*4+4; ja[count+10]=edgeoffset+i+1; ar[count+10]=1;
+			ia[count+11]=i*4+4; ja[count+11]=pairoffset+pairind+1; ar[count+11]=-1;
+			ia[count+12]=i*4+4; ja[count+12]=CompNodes[CompEdges[i].Ind1]+1; ar[count+12]=-1;
 		}
+		count+=12;
 	}
-	for(int i=0; i<CompNodes.size(); i++){
-		for(int j=i+1; j<CompNodes.size(); j++){
+	int offset=4*CompEdges.size();
+	int numconstr=0;
+	for(int i=0; i<CompNodes.size(); i++)
+		for(int j=i+1; j<CompNodes.size(); j++)
 			for(int k=j+1; k<CompNodes.size(); k++){
-				int pij=pairoffset, pjk=pairoffset, pik=pairoffset;
+				int pij=0, pjk=0, pik=0;
 				for(int l=0; l<i; l++)
 					pij+=(int)CompNodes.size()-l-1;
 				pij+=(j-i-1);
@@ -3010,12 +3092,44 @@ void SegmentGraph_t::GenerateILP(std::map<int,int>& CompNodes, vector<Edge_t>& C
 				for(int l=0; l<i; l++)
 					pik+=(int)CompNodes.size()-l-1;
 				pik+=(k-i-1);
-				model.addConstr(vGRBVar[pij] + vGRBVar[pjk] + 1 - vGRBVar[pik] >= 1, "c"+to_string(numconstr++));
-				model.addConstr(vGRBVar[pij] + vGRBVar[pjk] + 1 - vGRBVar[pik] <= 2, "c"+to_string(numconstr++));
+				glp_set_row_name(mip, offset+numconstr+1, ("c"+to_string(offset+numconstr+1)).c_str());
+				glp_set_row_bnds(mip, offset+numconstr+1, GLP_DB, 0, 1);
+				ia[count+1]=offset+numconstr+1; ja[count+1]=pairoffset+pij+1; ar[count+1]=1;
+				ia[count+2]=offset+numconstr+1; ja[count+2]=pairoffset+pjk+1; ar[count+2]=1;
+				ia[count+3]=offset+numconstr+1; ja[count+3]=pairoffset+pik+1; ar[count+3]=-1;
+
+				numconstr++;
+				count+=3;
 			}
-		}
+	glp_load_matrix(mip, count, ia, ja, ar);
+
+	glp_iocp parm;
+	glp_init_iocp(&parm);
+	parm.presolve = GLP_ON;
+	parm.tm_lim=300000;
+	parm.msg_lev=GLP_MSG_ERR;
+	int err = glp_intopt(mip, &parm);
+
+	count=0;
+	if(err==0){
+		for(int i=0; i<CompNodes.size(); i++)
+			for(int j=i+1; j<CompNodes.size(); j++){
+				Z[i][j]=glp_mip_col_val(mip, pairoffset+count+1);
+				count++;
+			}
+		for(int i=0; i<CompNodes.size(); i++)
+			Z[i][i]=0;
+		for(int i=0; i<CompNodes.size(); i++)
+			for(int j=0; j<i; j++)
+				Z[i][j]=1-Z[j][i];
+
+		for(int i=0; i<CompNodes.size(); i++)
+			X[i]=glp_mip_col_val(mip, i+1);
 	}
+	else
+		cout<<"ILP isn't successful\n";
 };
+
 
 vector< vector<int> > SegmentGraph_t::SortComponents(vector< vector<int> >& Components){
 	std::map<int,int> Median_ID;
