@@ -20,6 +20,8 @@ See LICENSE for licensing.
 
 using namespace std;
 
+extern string SQUIDversion;
+
 // parameter from BAM
 extern uint16_t ReadLen;
 
