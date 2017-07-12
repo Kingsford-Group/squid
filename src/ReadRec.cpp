@@ -1,3 +1,9 @@
+/*
+Part of SQUID transcriptomic structural variation detector
+(c) 2017 by  Cong Ma, Mingfu Shao, Carl Kingsford, and Carnegie Mellon University.
+See LICENSE for licensing.
+*/
+
 #include "ReadRec.h"
 #include "SegmentGraph.h"
 
@@ -11,7 +17,7 @@ ReadRec_t::ReadRec_t(BamAlignment record){
 		if(itcigar->Type=='M' || itcigar->Type=='S' || itcigar->Type=='H' || itcigar->Type=='I' || itcigar->Type=='=' || itcigar->Type=='X')
 			TotalLen+=itcigar->Length;
 	if(Phred_Type){
-		for(int i=0; i<record.Qualities.size(); i++){
+		for(unsigned int i=0; i<record.Qualities.size(); i++){
 			if(record.Qualities[i]<(char)(33+Min_Phred))
 				tmpLowPhredLen++;
 			else
@@ -21,7 +27,7 @@ ReadRec_t::ReadRec_t(BamAlignment record){
 		}
 	}
 	else{
-		for(int i=0; i<record.Qualities.size(); i++){
+		for(unsigned int i=0; i<record.Qualities.size(); i++){
 			if(record.Qualities[i]<(char)(64+Min_Phred))
 				tmpLowPhredLen++;
 			else
@@ -99,19 +105,19 @@ bool ReadRec_t::Equal(const ReadRec_t& lhs, const ReadRec_t& rhs){
 	bool same2=false;
 	if(lhs.FirstRead.size()==rhs.FirstRead.size() && lhs.SecondMate.size()==rhs.SecondMate.size()){
 		same1=true;
-		for(int i=0; i<lhs.FirstRead.size(); i++)
+		for(unsigned int i=0; i<lhs.FirstRead.size(); i++)
 			if(lhs.FirstRead[i].RefID!=rhs.FirstRead[i].RefID || lhs.FirstRead[i].RefPos!=rhs.FirstRead[i].RefPos || lhs.FirstRead[i].MatchRef!=rhs.FirstRead[i].MatchRef)
 				same1=false;
-		for(int i=0; i<lhs.SecondMate.size(); i++)
+		for(unsigned int i=0; i<lhs.SecondMate.size(); i++)
 			if(lhs.SecondMate[i].RefID!=rhs.SecondMate[i].RefID || lhs.SecondMate[i].RefPos!=rhs.SecondMate[i].RefPos || lhs.SecondMate[i].MatchRef!=rhs.SecondMate[i].MatchRef)
 				same1=false;
 	}
 	if(lhs.FirstRead.size()==rhs.SecondMate.size() && lhs.SecondMate.size()==rhs.FirstRead.size()){
 		same2=true;
-		for(int i=0; i<lhs.FirstRead.size(); i++)
+		for(unsigned int i=0; i<lhs.FirstRead.size(); i++)
 			if(lhs.FirstRead[i].RefID!=rhs.SecondMate[i].RefID || lhs.FirstRead[i].RefPos!=rhs.SecondMate[i].RefPos || lhs.FirstRead[i].MatchRef!=rhs.SecondMate[i].MatchRef)
 				same2=false;
-		for(int i=0; i<lhs.SecondMate.size(); i++)
+		for(unsigned int i=0; i<lhs.SecondMate.size(); i++)
 			if(lhs.SecondMate[i].RefID!=rhs.FirstRead[i].RefID || lhs.SecondMate[i].RefPos!=rhs.FirstRead[i].RefPos || lhs.SecondMate[i].MatchRef!=rhs.FirstRead[i].MatchRef)
 				same2=false;
 	}
@@ -158,7 +164,7 @@ bool ReadRec_t::IsEndDiscordant(bool _isfirst) const{
 		if(FirstRead.size()<=1)
 			return false;
 		else{
-			for(int i=0; i<FirstRead.size()-1; i++){
+			for(unsigned int i=0; i<FirstRead.size()-1; i++){
 				if(FirstRead[i].RefID!=FirstRead[i+1].RefID || FirstRead[i].IsReverse!=FirstRead[i+1].IsReverse)
 					return true;
 				else if(!FirstRead[i].IsReverse && (FirstRead[i].RefPos<FirstRead[i+1].RefPos)!=(FirstRead[i].ReadPos<FirstRead[i+1].ReadPos))
@@ -173,7 +179,7 @@ bool ReadRec_t::IsEndDiscordant(bool _isfirst) const{
 		if(SecondMate.size()<=1)
 			return false;
 		else{
-			for(int i=0; i<SecondMate.size()-1; i++){
+			for(unsigned int i=0; i<SecondMate.size()-1; i++){
 				if(SecondMate[i].RefID!=SecondMate[i+1].RefID || SecondMate[i].IsReverse!=SecondMate[i+1].IsReverse)
 					return true;
 				else if(!SecondMate[i].IsReverse && (SecondMate[i].RefPos<SecondMate[i+1].RefPos)!=(SecondMate[i].ReadPos<SecondMate[i+1].ReadPos))
@@ -235,16 +241,16 @@ void ReadRec_t::ModifybyGraph(SegmentGraph_t& SegmentGraph, const vector< vector
 	vector<int> tmpRead_Node=SegmentGraph.LocateRead(singleRead_Node, *this);
 	singleRead_Node=tmpRead_Node;
 	bool whetherdelete=false;
-	for(int i=0; i<tmpRead_Node.size(); i++)
+	for(unsigned int i=0; i<tmpRead_Node.size(); i++)
 		if(tmpRead_Node[i]==-1)
 			whetherdelete=true;
 	if(whetherdelete){
 		FirstRead.clear(); SecondMate.clear();
 	}
 	else{
-		for(int i=0; i<FirstRead.size(); i++)
+		for(unsigned int i=0; i<FirstRead.size(); i++)
 			FirstRead[i].ModifybyGraph_Single(SegmentGraph, Components, tmpRead_Node[i], Node_NewChr);
-		for(int i=0; i<SecondMate.size(); i++)
+		for(unsigned int i=0; i<SecondMate.size(); i++)
 			SecondMate[i].ModifybyGraph_Single(SegmentGraph, Components, tmpRead_Node[(int)FirstRead.size()+i], Node_NewChr);
 	}
 };
@@ -297,7 +303,7 @@ void BuildRefName(string bamfile, vector<string>& RefName, std::map<string,int> 
 bool BuildRefSeq(string fafile, const std::map<string,int>& RefTable, vector<int>& RefLength, vector<string>& RefSequence){
 	ifstream input(fafile);
 	RefSequence.resize(RefTable.size());
-	for(int i=0; i<RefLength.size(); i++)
+	for(unsigned int i=0; i<RefLength.size(); i++)
 		RefSequence[i].reserve(RefLength[i]);
 	string line;
 	int ind=-1;
@@ -316,7 +322,7 @@ bool BuildRefSeq(string fafile, const std::map<string,int>& RefTable, vector<int
 				RefSequence[ind]+=line;
 		}
 	}
-	for(int i=0; i<RefSequence.size(); i++)
+	for(unsigned int i=0; i<RefSequence.size(); i++)
         if((int)RefSequence[i].size()!=RefLength[i]){
         	cout<<"FASTA file doesn't match BAM file"<<endl;
             RefSequence.clear();
@@ -327,9 +333,9 @@ bool BuildRefSeq(string fafile, const std::map<string,int>& RefTable, vector<int
 
 void UpdateReference(const SegmentGraph_t& SegmentGraph, const vector< vector<int> >& Components, vector<int>& RefLength, vector<string>& RefSequence){
 	vector<string> newRefSequence(RefSequence.size());
-	for(int i=0; i<Components.size(); i++){
+	for(unsigned int i=0; i<Components.size(); i++){
 		int length=0;
-		for(int j=0; j<Components[i].size(); j++){
+		for(unsigned int j=0; j<Components[i].size(); j++){
 			length+=SegmentGraph.vNodes[abs(Components[i][j])-1].Length;
 			newRefSequence[i]+=RefSequence[SegmentGraph.vNodes[abs(Components[i][j])-1].Chr].substr(SegmentGraph.vNodes[abs(Components[i][j])-1].Position, SegmentGraph.vNodes[abs(Components[i][j])-1].Length);
 		}
@@ -391,7 +397,6 @@ void BuildChimericSBamRecord(SBamrecord_t& SBamrecord, const vector<string>& Ref
 		ReadLen=sample_ReadLen[(int)sample_ReadLen.size()/2];
 		bamreader.Close();
 	}
-	clock_t starttime=clock();
 	sort(newSBamrecord.begin(), newSBamrecord.end(), ReadRec_t::FrontSmallerThan);
 	time(&CurrentTime);
 	CurrentTimeStr=ctime(&CurrentTime);

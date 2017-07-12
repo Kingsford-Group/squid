@@ -1,3 +1,9 @@
+/*
+Part of SQUID transcriptomic structural variation detector
+(c) 2017 by  Cong Ma, Mingfu Shao, Carl Kingsford, and Carnegie Mellon University.
+See LICENSE for licensing.
+*/
+
 #include "SingleBamRec.h"
 #include "ReadRec.h"
 #include "BPNode.h"
@@ -39,8 +45,8 @@ int main(int argc, char* argv[]){
 		Components=SegmentGraph.MergeComponents(Components);
 
 		vector< pair<int, int> > Node_NewChr; Node_NewChr.resize(SegmentGraph.vNodes.size());
-		for(int i=0; i<Components.size(); i++)
-			for(int j=0; j<Components[i].size(); j++)
+		for(unsigned int i=0; i<Components.size(); i++)
+			for(unsigned int j=0; j<Components[i].size(); j++)
 				Node_NewChr[abs(Components[i][j])-1]=make_pair(i, j);
 
 		if(Print_Total_Ordering)

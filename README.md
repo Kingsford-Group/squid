@@ -1,31 +1,18 @@
 # OVERVIEW
 SQUID is designed to detect transcriptomic structural variations from RNA-seq alignment.
 
+To reproduce the result of applying SQUID on simulation data and previously studied cell lines, follow the instructions from [squidtests](https://github.com/Kingsford-Group/squidtests)
+
+# RELEASE
+If you want to skip the installation process, you can find the binary release [here]{}!
+
 # INSTALLATION
-SQUID requires boost, Gurobi Optimizer, bamtools. 
-
-### Boost
-Download boost from (http://www.boost.org), and decompress. For Max and Unix/Linux, you don't need to build or compile anything, but just change the BOOST variable in Makefile into the decompressed boost path.
-
-### Gurobi Optimizer
-Download Gurobi Optimizer from (http://www.gurobi.com/downloads/download-center), and get the license. Change GUROBI variable in Makefile into the path of gurobi folder (the folder having include and lib in it). You may need to change LDLIBS of gurobi into the version you download, for example, -lgurobi65 if you download gurobi version 65*, or -lgurobi70 if you download version 70*.
-
-Gurobi doesn't support gcc5 currently. If you are using gcc5, you need to add -D_GLIBCXX_USE_CXX11_ABI=0 to CXXFLAGS in Makefile
-
-### Bamtools
-Download bamtools from (https://github.com/pezmaster31/bamtools). Follow the instructions from (https://github.com/pezmaster31/bamtools/wiki/Building-and-installing) to build bamtools. Change the BAMTOOLS variable in Makefile into the path of bamtools directory (the folder having include and lib in it).
-
-### Compile SQUID
-Go into SQUID folder and make.
-```
-cd squid
-make
-```
+SQUID requires Boost, GLPK, BamTools. A step by step installation construction can be found [here for linux](doc/Installation_linux.md), and [here for mac](doc/Installation_mac.md).
 
 On Mac, you need to additionly run the following command to dynamicly linking dependent libraries:
 ```
 export DYLD_LIBRARY_PATH=<bamtools_folder>/lib
-export DYLD_LIBRARY_PATH=<gurobi_folder>/lib
+export DYLD_LIBRARY_PATH=<glpk_folder>/lib
 ```
 
 # USAGE
