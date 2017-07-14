@@ -6,9 +6,9 @@ CC = gcc
 CXX = g++
 CXXFLAGS = -std=c++11 $(INCLUDES)
 INCLUDES = -I $(BAMTOOLS)/include -I $(GLPK)/include -I $(BOOST)
-LDFLAGS = -L $(BAMTOOLS)/lib/ -L $(GLPK)/lib/
-LDLIBS = -lbamtools -lglpk -lz -lm
-RPATH =  $(BAMTOOLS)/lib/:$(GLPK)/lib/
+LDADD = $(BAMTOOLS)/lib/libbamtools.a $(GLPK)/lib/libglpk.a
+LDLIBS = -lz -lm
+#RPATH =  $(BAMTOOLS)/lib/:$(GLPK)/lib/
 
 SRCS = src/main.cpp src/ReadRec.cpp src/SegmentGraph.cpp src/WriteIO.cpp src/Config.cpp
 
@@ -16,7 +16,7 @@ all: bin/squid
 
 bin/squid: $(subst .cpp,.o,$(SRCS))
 	mkdir -p bin
-	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS) -Wl,-rpath,$(RPATH)
+	$(CXX) -o $@ $^ $(LDADD) $(LDLIBS)
 
 clean:
 	rm -f bin/squid src/*.o
