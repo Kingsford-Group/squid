@@ -3,11 +3,14 @@ SQUID is designed to detect transcriptomic structural variations from RNA-seq al
 
 To reproduce the result of applying SQUID on simulation data and previously studied cell lines, follow the instructions from [squidtest](https://github.com/Kingsford-Group/squidtest)
 
-# RELEASE
+# INSTALLING PRE-COMPILED BINARIES
 If you want to skip the installation process, you can find the binary release [here](https://github.com/Kingsford-Group/squid/releases)!
 
-# INSTALLATION
-SQUID requires Boost, GLPK, BamTools. A step by step installation construction can be found [here for linux](doc/Installation_linux.md), and [here for mac](doc/Installation_mac.md).
+# BUILDING FROM SOURCE
+
+You only need to build from source if either the pre-built binaries (see above) don't work on your system or you want to make a change to the SQUID code.
+
+Compiling SQUID requires Boost, GLPK, BamTools. A step by step installation construction can be found [here for linux](doc/Installation_linux.md), and [here for mac](doc/Installation_mac.md).
 
 On Mac, you need to additionly run the following command to dynamicly linking dependent libraries:
 ```
