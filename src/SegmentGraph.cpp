@@ -2742,7 +2742,7 @@ vector< vector<int> > SegmentGraph_t::Ordering(){
 			BestOrders[i].push_back(CompNodes.begin()->first+1);
 			continue;
 		}
-		//cout<<"component "<<i<<endl;
+		//cout<<"component "<<i<<"\t"<<CompNodes.size()<<endl;
 		BestOrders[i]=MincutRecursion(CompNodes, CompEdges);
 	}
 	return BestOrders;
@@ -2757,9 +2757,6 @@ vector<int> SegmentGraph_t::MincutRecursion(std::map<int,int> CompNodes, vector<
 	}
 	else if(CompNodes.size()<40){
 		vector<int> BestOrder(CompNodes.size(), 0);
-		glp_prob *mip=glp_create_prob();
-		glp_set_prob_name(mip, "GSG");
-		glp_set_obj_dir(mip, GLP_MAX);
 		int edgeidx=0;
 		std::map<int,int>::iterator itnodeend=CompNodes.end(); itnodeend--;
 		for(std::map<int,int>::iterator itnode=CompNodes.begin(); itnode!=itnodeend; itnode++){
@@ -2775,9 +2772,11 @@ vector<int> SegmentGraph_t::MincutRecursion(std::map<int,int> CompNodes, vector<
 			}
 		}
 		vector< vector<int> > Z; Z.resize(CompNodes.size());
-		vector<int> X; X.resize(CompNodes.size());
-		for(int j=0; j<Z.size(); j++)
-			Z[j].resize(CompNodes.size(), 0);
+		vector<int> X; X.resize(CompNodes.size(), 1);
+		for(int j=0; j<Z.size(); j++){
+			Z[j].resize(j+1, 0);
+			Z[j].resize(CompNodes.size(), 1);
+		}
 		GenerateILP(CompNodes, CompEdges, Z, X);
 
 		for(std::map<int,int>::iterator it=CompNodes.begin(); it!=CompNodes.end(); it++){
@@ -2786,6 +2785,18 @@ vector<int> SegmentGraph_t::MincutRecursion(std::map<int,int> CompNodes, vector<
 				pos-=Z[it->second][k];
 			BestOrder[pos-1]=(X[it->second]>0.5)?(it->first+1):(-it->first-1);
 		}
+
+		// verify
+		vector<int> tmp1, tmp2;
+		for(int i=0; i<BestOrder.size(); i++)
+			tmp1.push_back(abs(BestOrder[i])-1);
+		sort(tmp1.begin(), tmp1.end());
+		for(map<int,int>::iterator it=CompNodes.begin(); it!=CompNodes.end(); it++)
+			tmp2.push_back(it->first);
+		sort(tmp2.begin(), tmp2.end());
+		assert(tmp1.size()==tmp2.size());
+		for(int i=0; i<tmp1.size(); i++)
+			assert(tmp1[i]==tmp2[i]);
 		return BestOrder;
 	}
 	else{
@@ -2816,9 +2827,11 @@ vector<int> SegmentGraph_t::MincutRecursion(std::map<int,int> CompNodes, vector<
 				}
 			}
 			vector< vector<int> > Z; Z.resize(CompNodes.size());
-			vector<int> X; X.resize(CompNodes.size());
-			for(int j=0; j<Z.size(); j++)
-				Z[j].resize(CompNodes.size(), 0);
+			vector<int> X; X.resize(CompNodes.size(), 1);
+			for(int j=0; j<Z.size(); j++){
+				Z[j].resize(j+1, 0);
+				Z[j].resize(CompNodes.size(), 1);
+			}
 			GenerateILP(CompNodes, CompEdges, Z, X);
 
 			for(std::map<int,int>::iterator it=CompNodes.begin(); it!=CompNodes.end(); it++){
@@ -2827,6 +2840,18 @@ vector<int> SegmentGraph_t::MincutRecursion(std::map<int,int> CompNodes, vector<
 					pos-=Z[it->second][k];
 				BestOrder[pos-1]=(X[it->second]>0.5)?(it->first+1):(-it->first-1);
 			}
+	
+			// verify
+			vector<int> tmp1, tmp2;
+			for(int i=0; i<BestOrder.size(); i++)
+				tmp1.push_back(abs(BestOrder[i])-1);
+			sort(tmp1.begin(), tmp1.end());
+			for(map<int,int>::iterator it=CompNodes.begin(); it!=CompNodes.end(); it++)
+				tmp2.push_back(it->first);
+			sort(tmp2.begin(), tmp2.end());
+			assert(tmp1.size()==tmp2.size());
+			for(int i=0; i<tmp1.size(); i++)
+				assert(tmp1[i]==tmp2[i]);
 			return BestOrder;
 		}
 		else{
@@ -2942,9 +2967,9 @@ void SegmentGraph_t::GenerateILP(map<int,int>& CompNodes, vector<Edge_t>& CompEd
 		}
 
 	count=0;
-	int ia[12*CompEdges.size()+(CompNodes.size())*(CompNodes.size()-1)*(CompNodes.size()-2)/2+1];
-	int ja[12*CompEdges.size()+(CompNodes.size())*(CompNodes.size()-1)*(CompNodes.size()-2)/2+1];
-	double ar[12*CompEdges.size()+(CompNodes.size())*(CompNodes.size()-1)*(CompNodes.size()-2)/2+1];
+	int * ia=new int[12*CompEdges.size()+(CompNodes.size())*(CompNodes.size()-1)*(CompNodes.size()-2)/2+1];
+	int * ja=new int[12*CompEdges.size()+(CompNodes.size())*(CompNodes.size()-1)*(CompNodes.size()-2)/2+1];
+	double * ar=new double[12*CompEdges.size()+(CompNodes.size())*(CompNodes.size()-1)*(CompNodes.size()-2)/2+1];
 	glp_add_rows(mip, 4*(int)CompEdges.size()+(CompNodes.size())*(CompNodes.size()-1)*(CompNodes.size()-2)/6); // this doesn't containt he second part, topological order contains
 	for(int i=0; i<CompEdges.size(); i++){
 		int pairind=0; // index of corresponding pairnode
@@ -3117,10 +3142,12 @@ void SegmentGraph_t::GenerateILP(map<int,int>& CompNodes, vector<Edge_t>& CompEd
 	int err = glp_intopt(mip, &parm);
 
 	count=0;
-	if(err==0){
+	if(err==0 || glp_mip_status(mip)==GLP_FEAS){
+		if(err!=0)
+			cout<<"Find feasible solution instead of optimal solution.\n";
 		for(int i=0; i<CompNodes.size(); i++)
 			for(int j=i+1; j<CompNodes.size(); j++){
-				Z[i][j]=glp_mip_col_val(mip, pairoffset+count+1);
+				Z[i][j]=(glp_mip_col_val(mip, pairoffset+count+1)>0.5);
 				count++;
 			}
 		for(int i=0; i<CompNodes.size(); i++)
@@ -3130,10 +3157,32 @@ void SegmentGraph_t::GenerateILP(map<int,int>& CompNodes, vector<Edge_t>& CompEd
 				Z[i][j]=1-Z[j][i];
 
 		for(int i=0; i<CompNodes.size(); i++)
-			X[i]=glp_mip_col_val(mip, i+1);
+			X[i]=(glp_mip_col_val(mip, i+1)>0.5);
 	}
-	else
+	else{
 		cout<<"ILP isn't successful\n";
+		if(err==GLP_ETMLIM)
+			cout<<"time limit has been exceeded\n";
+		else if(err==GLP_EBOUND)
+			cout<<"Unable to start the search, because some double-bounded variables have incorrect bounds\n";
+		else if(err==GLP_EROOT)
+			cout<<"optimal basis for initial LP relaxation is not provided\n";
+		else if(err==GLP_ENOPFS)
+			cout<<"LP relaxation of the MIP problem instance has no primal feasible solution\n";
+		else if(err==GLP_ENODFS)
+			cout<<"LP relaxation of the MIP problem instance has no dual feasible solution\n";
+		else if(err==GLP_EFAIL)
+			cout<<"The search was prematurely terminated due to the solver failure.\n";
+		else if(err==GLP_EMIPGAP)
+			cout<<"relative mip gap tolerance has been reached\n";
+		else if(err==GLP_ESTOP)
+			cout<<"The search was prematurely terminated by application.\n";
+	}
+	
+	// free glpk environment
+	//err=glp_free_env();
+	//if(err!=0)
+	//	cout<<"free environment UNSUCCESSFUL\n";
 };
 
 
