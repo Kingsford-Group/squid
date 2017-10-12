@@ -104,6 +104,7 @@ public:
 	vector< vector<int> > Ordering();
 	vector<int> MincutRecursion(std::map<int,int> CompNodes, vector<Edge_t> CompEdges);
 	void GenerateILP(std::map<int,int>& CompNodes, vector<Edge_t>& CompEdges, vector< vector<int> >& Z, vector<int>& X);
+	void GenerateSqueezedILP(std::map<int,int>& CompNodes, vector<Edge_t>& CompEdges, vector< vector<int> >& Z, vector<int>& X);
 
 	vector< vector<int> > SortComponents(vector< vector<int> >& Components);
 	vector< vector<int> > MergeSingleton(vector< vector<int> >& Components, const vector<int>& RefLength, int LenCutOff=500000);

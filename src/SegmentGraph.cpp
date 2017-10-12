@@ -1426,7 +1426,7 @@ void SegmentGraph_t::RawEdgesChim(SBamrecord_t& Chimrecord){
 					assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
 					if(!IsDiscordant(tmp))
 						vEdges.push_back(tmp);
-					else{
+					else if(it->IsPairDiscordant(false)){
 						int breakpoint1=(it->FirstRead.back().IsReverse)?(it->FirstRead.back().RefPos):(it->FirstRead.back().RefPos+it->FirstRead.back().MatchRef);
 						int breakpoint2=(it->SecondMate.back().IsReverse)?(it->SecondMate.back().RefPos):(it->SecondMate.back().RefPos+it->SecondMate.back().MatchRef);
 						if(it->FirstRead.back()>it->SecondMate.back()){
@@ -1595,7 +1595,8 @@ void SegmentGraph_t::RawEdgesOther(SBamrecord_t& Chimrecord, string bamfile){
 							bool tmpHead1=(readrec.FirstRead.back().IsReverse)?true:false, tmpHead2=(readrec.SecondMate.back().IsReverse)?true:false;
 							Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
 							assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
-							vEdges.push_back(tmp);
+							if(readrec.IsPairDiscordant(false)==IsDiscordant(tmp))
+								vEdges.push_back(tmp);
 						}
 					}
 				}
@@ -2755,7 +2756,7 @@ vector<int> SegmentGraph_t::MincutRecursion(std::map<int,int> CompNodes, vector<
 		BestOrder.push_back(it->first+1);
 		return BestOrder;
 	}
-	else if(CompNodes.size()<40){
+	else if(CompNodes.size()<20){
 		vector<int> BestOrder(CompNodes.size(), 0);
 		int edgeidx=0;
 		std::map<int,int>::iterator itnodeend=CompNodes.end(); itnodeend--;
@@ -2832,7 +2833,7 @@ vector<int> SegmentGraph_t::MincutRecursion(std::map<int,int> CompNodes, vector<
 				Z[j].resize(j+1, 0);
 				Z[j].resize(CompNodes.size(), 1);
 			}
-			GenerateILP(CompNodes, CompEdges, Z, X);
+			GenerateSqueezedILP(CompNodes, CompEdges, Z, X);
 
 			for(std::map<int,int>::iterator it=CompNodes.begin(); it!=CompNodes.end(); it++){
 				int pos=CompNodes.size();
@@ -2933,6 +2934,316 @@ vector<int> SegmentGraph_t::MincutRecursion(std::map<int,int> CompNodes, vector<
 			}
 			return BestOrder;
 		}
+	}
+};
+
+void SegmentGraph_t::GenerateSqueezedILP(map<int,int>& CompNodes, vector<Edge_t>& CompEdges, vector< vector<int> >& Z, vector<int>& X){
+	glp_prob *mip=glp_create_prob();
+	glp_set_prob_name(mip, "GSG");
+	glp_set_obj_dir(mip, GLP_MAX);
+
+	// For a node, if one edge out-weigh the sum of rest edges, then this edge must be satisfied
+	// If an optimal solution doesn't satisfy this edge, then take out the node alone and insert it as indicated by the dominating edge, 
+	// will create a better optimal solution
+	// Select those edges
+	vector<Edge_t> ImportantEdges;
+	vector<Edge_t> OtherEdges;
+	for(map<int,int>::iterator it=CompNodes.begin(); it!=CompNodes.end(); it++){
+		int maxweight=0;
+		int sumweight=0;
+		Edge_t maxedge;
+		for(vector<Edge_t*>::iterator itedge=vNodes[it->first].HeadEdges.begin(); itedge!=vNodes[it->first].HeadEdges.end(); itedge++){
+			sumweight+=(*itedge)->Weight;
+			if((*itedge)->Weight>maxweight){
+				maxweight=(*itedge)->Weight;
+				maxedge=(**itedge);
+			}
+		}
+		if(maxweight*2>sumweight)
+			ImportantEdges.push_back(maxedge);
+	}
+	sort(ImportantEdges.begin(), ImportantEdges.end()); // one property for ImportantEdges is that there is no cycle, do I need to check that in code XXX
+	for(vector<Edge_t>::iterator it=CompEdges.begin(); it!=CompEdges.end(); it++)
+		if(!binary_search(ImportantEdges.begin(), ImportantEdges.end(), (*it)))
+			OtherEdges.push_back((*it));
+	// process important edge list incident to each nodes (important edges sharing ndoes)
+	map<int, vector<int> > IncidentEdges;
+	for(int i=0; i<ImportantEdges.size(); i++){
+		const Edge_t& e=ImportantEdges[i];
+		if(IncidentEdges.find(e.Ind1)!=IncidentEdges.end())
+			IncidentEdges[e.Ind1].push_back(i);
+		else{
+			vector<int> tmp;
+			tmp.push_back(i);
+			IncidentEdges[e.Ind1]=tmp;
+		}
+		if(IncidentEdges.find(e.Ind2)!=IncidentEdges.end())
+			IncidentEdges[e.Ind2].push_back(i);
+		else{
+			vector<int> tmp;
+			tmp.push_back(i);
+			IncidentEdges[e.Ind2]=tmp;
+		}
+	}
+	int count=0;
+	// create variables for other edges
+	map<int, pair<bool, int> > OtherEdgesVar;
+	for(int i=0; i<OtherEdges.size(); i++){
+		OtherEdgesVar[i]=make_pair(true, count);
+		count++;
+	}
+	// create variables for nodes/positions of import edges
+	map<int, pair<bool, int> > Orientation; // node index to <original (true) or 1-original (false), variable index>
+	map< pair<int,int>, pair<bool,int> > RelativePos; // pair of node indexes to <original (true) or 1-original (false), variable index>
+	for(vector<Edge_t>::iterator it=ImportantEdges.begin(); it!=ImportantEdges.end(); it++){
+		map< pair<int,int>, pair<bool,int> >::iterator itrela=RelativePos.find(make_pair(it->Ind1, it->Ind2));
+		if(itrela==RelativePos.end()){
+			vector<int> UncheckedNodes;
+			UncheckedNodes.push_back(it->Ind1);
+			Orientation[it->Ind1]=make_pair(true, count);
+			while(UncheckedNodes.size()!=0){
+				int nodeind=UncheckedNodes.back();
+				UncheckedNodes.pop_back();
+				for(int i=0; i<IncidentEdges[nodeind].size(); i++){
+					const Edge_t& e=CompEdges[IncidentEdges[nodeind][i]];
+					if(RelativePos.find(make_pair(e.Ind1, e.Ind2))!=RelativePos.end()){
+						int othernodeind=(e.Ind1==nodeind)?e.Ind2:e.Ind1;
+						UncheckedNodes.push_back(othernodeind);
+						Orientation[othernodeind]=Orientation[nodeind];
+						RelativePos[make_pair(e.Ind1, e.Ind2)]=Orientation[nodeind];
+						if(!e.Head1 && e.Head2){
+							// nothing need to change
+						}
+						else if(e.Head1 && e.Head2){
+							Orientation[othernodeind].first=!Orientation[nodeind].first;
+							if(othernodeind==e.Ind2)
+								RelativePos[make_pair(nodeind, othernodeind)].first=!RelativePos[make_pair(nodeind, othernodeind)].first;
+						}
+						else if(e.Head1 && !e.Head2){
+							RelativePos[make_pair(e.Ind1, e.Ind2)].first=!RelativePos[make_pair(e.Ind1, e.Ind2)].first;
+						}
+						else{
+							Orientation[othernodeind].first=!Orientation[nodeind].first;
+							if(othernodeind==e.Ind1)
+								RelativePos[make_pair(othernodeind, nodeind)].first=!RelativePos[make_pair(othernodeind, nodeind)].first;
+						}
+					}
+				}
+			}
+			count++;
+		}
+	}
+	// create variables for the rest nodes
+	vector<int> OldCompNodes(CompNodes.size());
+	for(map<int,int>::iterator it=CompNodes.begin(); it!=CompNodes.end(); it++)
+		OldCompNodes[it->second]=it->first;
+	for(vector<int>::iterator it=OldCompNodes.begin(); it!=OldCompNodes.end(); it++)
+		if(Orientation.find(*it)==Orientation.end()){
+			Orientation[*it]=make_pair(true, count);
+			count++;
+		}
+	// create variable for the rest node pairs
+	for(vector<int>::iterator it1=OldCompNodes.begin(); it1!=OldCompNodes.end(); it1++)
+		for(vector<int>::iterator it2=(it1+1); it2!=OldCompNodes.end(); it2++)
+			if(RelativePos.find(make_pair(*it1, *it2))==RelativePos.end()){
+				RelativePos[make_pair(*it1, *it2)]=make_pair(true, count);
+				count++;
+			}
+
+	glp_add_cols(mip, count);
+	for(int i=0; i<OtherEdges.size(); i++){
+		glp_set_col_name(mip, i+1, ("x"+to_string(i)).c_str());
+		glp_set_col_bnds(mip, i+1, GLP_DB, 0, 1);
+		glp_set_obj_coef(mip, i+1, OtherEdges[i].Weight);
+		glp_set_col_kind(mip, i+1, GLP_BV);
+	}
+	for(int i=OtherEdges.size(); i<count; i++){
+		glp_set_col_name(mip, i+1, ("v"+to_string(i)).c_str());
+		glp_set_col_bnds(mip, i+1, GLP_DB, 0, 1);
+		glp_set_obj_coef(mip, i+1, 0);
+		glp_set_col_kind(mip, i+1, GLP_BV);
+	}
+
+	// initialize glpk matrix
+	int* ia=new int[12*OtherEdges.size()+(CompNodes.size())*(CompNodes.size()-1)*(CompNodes.size()-2)/2+1];
+	int *ja=new int[12*OtherEdges.size()+(CompNodes.size())*(CompNodes.size()-1)*(CompNodes.size()-2)/2+1];
+	double* ar=new double[12*OtherEdges.size()+(CompNodes.size())*(CompNodes.size()-1)*(CompNodes.size()-2)/2+1];
+	glp_add_rows(mip, 4*(int)OtherEdges.size()+(CompNodes.size())*(CompNodes.size()-1)*(CompNodes.size()-2)/6);
+
+	count=0;
+	for(int i=0; i<OtherEdges.size(); i++){
+		int pairind=RelativePos[make_pair(OtherEdges[i].Ind1, OtherEdges[i].Ind2)].second;
+		if(!OtherEdges[i].Head1 && OtherEdges[i].Head2){
+			glp_set_row_name(mip, i*4+1, ("c"+to_string(i*4+1)).c_str());
+			glp_set_row_bnds(mip, i*4+1, GLP_UP, -3, 1+1-(int)Orientation[OtherEdges[i].Ind1].first-1+(int)Orientation[OtherEdges[i].Ind2].first);
+			ia[count+1]=i*4+1; ja[count+1]=OtherEdgesVar[i].second+1; ar[count+1]=1;
+			ia[count+2]=i*4+1; ja[count+2]=Orientation[OtherEdges[i].Ind1].second+1; ar[count+2]=(Orientation[OtherEdges[i].Ind1].first)?-1:1;
+			ia[count+3]=i*4+1; ja[count+3]=Orientation[OtherEdges[i].Ind2].second+1; ar[count+3]=(Orientation[OtherEdges[i].Ind2].first)?1:-1;
+
+			glp_set_row_name(mip, i*4+2, ("c"+to_string(i*4+2)).c_str());
+			glp_set_row_bnds(mip, i*4+2, GLP_UP, -3, 1-1+(int)Orientation[OtherEdges[i].Ind1].first+1-(int)Orientation[OtherEdges[i].Ind2].first);
+			ia[count+4]=i*4+2; ja[count+4]=OtherEdgesVar[i].second+1; ar[count+4]=1;
+			ia[count+5]=i*4+2; ja[count+5]=Orientation[OtherEdges[i].Ind1].second+1; ar[count+5]=(Orientation[OtherEdges[i].Ind1].first)?1:-1;
+			ia[count+6]=i*4+2; ja[count+6]=Orientation[OtherEdges[i].Ind2].second+1; ar[count+6]=(Orientation[OtherEdges[i].Ind2].first)?-1:1;
+
+			glp_set_row_name(mip, i*4+3, ("c"+to_string(i*4+3)).c_str());
+			glp_set_row_bnds(mip, i*4+3, GLP_UP, -3, 1+1-(int)RelativePos[make_pair(OtherEdges[i].Ind1, OtherEdges[i].Ind2)].first-1+(int)Orientation[OtherEdges[i].Ind1].first);
+			ia[count+7]=i*4+3; ja[count+7]=OtherEdgesVar[i].second+1; ar[count+7]=1;
+			ia[count+8]=i*4+3; ja[count+8]=pairind+1; ar[count+8]=(RelativePos[make_pair(OtherEdges[i].Ind1, OtherEdges[i].Ind2)].first)?-1:1;
+			ia[count+9]=i*4+3; ja[count+9]=Orientation[OtherEdges[i].Ind1].second+1; ar[count+9]=(Orientation[OtherEdges[i].Ind1].first)?1:-1;
+
+			glp_set_row_name(mip, i*4+4, ("c"+to_string(i*4+4)).c_str());
+			glp_set_row_bnds(mip, i*4+4, GLP_UP, -3, 1-1+(int)RelativePos[make_pair(OtherEdges[i].Ind1, OtherEdges[i].Ind2)].first+1-(int)Orientation[OtherEdges[i].Ind1].first);
+			ia[count+10]=i*4+4; ja[count+10]=OtherEdgesVar[i].second+1; ar[count+10]=1;
+			ia[count+11]=i*4+4; ja[count+11]=pairind+1; ar[count+11]=(RelativePos[make_pair(OtherEdges[i].Ind1, OtherEdges[i].Ind2)].first)?1:-1;
+			ia[count+12]=i*4+4; ja[count+12]=Orientation[OtherEdges[i].Ind1].second+1; ar[count+12]=(Orientation[OtherEdges[i].Ind1].first)?-1:1;
+		}
+		else if(OtherEdges[i].Head1 && OtherEdges[i].Head2){
+			glp_set_row_name(mip, i*4+1, ("c"+to_string(i*4+1)).c_str());
+			glp_set_row_bnds(mip, i*4+1, GLP_UP, -3, 1-(int)Orientation[OtherEdges[i].Ind1].first+1-(int)Orientation[OtherEdges[i].Ind2].first);
+			ia[count+1]=i*4+1; ja[count+1]=OtherEdgesVar[i].second+1; ar[count+1]=1;
+			ia[count+2]=i*4+1; ja[count+2]=Orientation[OtherEdges[i].Ind1].second+1; ar[count+2]=(Orientation[OtherEdges[i].Ind1].first)?-1:1;
+			ia[count+3]=i*4+1; ja[count+3]=Orientation[OtherEdges[i].Ind2].second+1; ar[count+3]=(Orientation[OtherEdges[i].Ind2].first)?-1:1;
+
+			glp_set_row_name(mip, i*4+2, ("c"+to_string(i*4+2)).c_str());
+			glp_set_row_bnds(mip, i*4+2, GLP_UP, -3, 2-1+(int)Orientation[OtherEdges[i].Ind1].first-1+(int)Orientation[OtherEdges[i].Ind2].first);
+			ia[count+4]=i*4+2; ja[count+4]=OtherEdgesVar[i].second+1; ar[count+4]=1;
+			ia[count+5]=i*4+2; ja[count+5]=Orientation[OtherEdges[i].Ind1].second+1; ar[count+5]=(Orientation[OtherEdges[i].Ind1].first)?1:-1;
+			ia[count+6]=i*4+2; ja[count+6]=Orientation[OtherEdges[i].Ind2].second+1; ar[count+6]=(Orientation[OtherEdges[i].Ind2].first)?1:-1;
+
+			glp_set_row_name(mip, i*4+3, ("c"+to_string(i*4+3)).c_str());
+			glp_set_row_bnds(mip, i*4+3, GLP_UP, -3, 1+1-(int)RelativePos[make_pair(OtherEdges[i].Ind1, OtherEdges[i].Ind2)].first-1+(int)Orientation[OtherEdges[i].Ind2].first);
+			ia[count+7]=i*4+3; ja[count+7]=OtherEdgesVar[i].second+1; ar[count+7]=1;
+			ia[count+8]=i*4+3; ja[count+8]=pairind+1; ar[count+8]=(RelativePos[make_pair(OtherEdges[i].Ind1, OtherEdges[i].Ind2)].first)?-1:1;
+			ia[count+9]=i*4+3; ja[count+9]=Orientation[OtherEdges[i].Ind2].second+1; ar[count+9]=(Orientation[OtherEdges[i].Ind2].first)?1:-1;
+
+			glp_set_row_name(mip, i*4+4, ("c"+to_string(i*4+4)).c_str());
+			glp_set_row_bnds(mip, i*4+4, GLP_UP, -3, 1-1+(int)RelativePos[make_pair(OtherEdges[i].Ind1, OtherEdges[i].Ind2)].first+1-(int)Orientation[OtherEdges[i].Ind2].first);
+			ia[count+10]=i*4+4; ja[count+10]=OtherEdgesVar[i].second+1; ar[count+10]=1;
+			ia[count+11]=i*4+4; ja[count+11]=pairind+1; ar[count+11]=(RelativePos[make_pair(OtherEdges[i].Ind1, OtherEdges[i].Ind2)].first)?1:-1;
+			ia[count+12]=i*4+4; ja[count+12]=Orientation[OtherEdges[i].Ind2].second+1; ar[count+12]=(Orientation[OtherEdges[i].Ind2].first)?-1:1;
+		}
+		else if(!OtherEdges[i].Head1 && !OtherEdges[i].Head2){
+			glp_set_row_name(mip, i*4+1, ("c"+to_string(i*4+1)).c_str());
+			glp_set_row_bnds(mip, i*4+1, GLP_UP, -3, 0+1-(int)Orientation[OtherEdges[i].Ind1].first+1-(int)Orientation[OtherEdges[i].Ind2].first);
+			ia[count+1]=i*4+1; ja[count+1]=OtherEdgesVar[i].second+1; ar[count+1]=1;
+			ia[count+2]=i*4+1; ja[count+2]=Orientation[OtherEdges[i].Ind1].second+1; ar[count+2]=(Orientation[OtherEdges[i].Ind1].first)?-1:1;
+			ia[count+3]=i*4+1; ja[count+3]=Orientation[OtherEdges[i].Ind2].second+1; ar[count+3]=(Orientation[OtherEdges[i].Ind2].first)?-1:1;
+
+			glp_set_row_name(mip, i*4+2, ("c"+to_string(i*4+2)).c_str());
+			glp_set_row_bnds(mip, i*4+2, GLP_UP, -3, 2-1+(int)Orientation[OtherEdges[i].Ind1].first-1+(int)Orientation[OtherEdges[i].Ind2].first);
+			ia[count+4]=i*4+2; ja[count+4]=OtherEdgesVar[i].second+1; ar[count+4]=1;
+			ia[count+5]=i*4+2; ja[count+5]=Orientation[OtherEdges[i].Ind1].second+1; ar[count+5]=(Orientation[OtherEdges[i].Ind1].first)?1:-1;
+			ia[count+6]=i*4+2; ja[count+6]=Orientation[OtherEdges[i].Ind2].second+1; ar[count+6]=(Orientation[OtherEdges[i].Ind2].first)?1:-1;
+
+			glp_set_row_name(mip, i*4+3, ("c"+to_string(i*4+3)).c_str());
+			glp_set_row_bnds(mip, i*4+3, GLP_UP, -3, 1+1-(int)RelativePos[make_pair(OtherEdges[i].Ind1, OtherEdges[i].Ind2)].first-1+(int)Orientation[OtherEdges[i].Ind1].first);
+			ia[count+7]=i*4+3; ja[count+7]=OtherEdgesVar[i].second+1; ar[count+7]=1;
+			ia[count+8]=i*4+3; ja[count+8]=pairind+1; ar[count+8]=(RelativePos[make_pair(OtherEdges[i].Ind1, OtherEdges[i].Ind2)].first)?-1:1;
+			ia[count+9]=i*4+3; ja[count+9]=Orientation[OtherEdges[i].Ind1].second+1; ar[count+9]=(Orientation[OtherEdges[i].Ind1].first)?1:-1;
+
+			glp_set_row_name(mip, i*4+4, ("c"+to_string(i*4+4)).c_str());
+			glp_set_row_bnds(mip, i*4+4, GLP_UP, -3, 1-1+(int)RelativePos[make_pair(OtherEdges[i].Ind1, OtherEdges[i].Ind2)].first+1-(int)Orientation[OtherEdges[i].Ind1].first);
+			ia[count+10]=i*4+4; ja[count+10]=OtherEdgesVar[i].second+1; ar[count+10]=1;
+			ia[count+11]=i*4+4; ja[count+11]=pairind+1; ar[count+11]=(RelativePos[make_pair(OtherEdges[i].Ind1, OtherEdges[i].Ind2)].first)?1:-1;
+			ia[count+12]=i*4+4; ja[count+12]=Orientation[OtherEdges[i].Ind1].second+1; ar[count+12]=(Orientation[OtherEdges[i].Ind1].first)?-1:1;
+		}
+		else{
+			glp_set_row_name(mip, i*4+1, ("c"+to_string(i*4+1)).c_str());
+			glp_set_row_bnds(mip, i*4+1, GLP_UP, -3, 1+1-(int)Orientation[OtherEdges[i].Ind1].first-1+(int)Orientation[OtherEdges[i].Ind2].first);
+			ia[count+1]=i*4+1; ja[count+1]=OtherEdgesVar[i].second+1; ar[count+1]=1;
+			ia[count+2]=i*4+1; ja[count+2]=Orientation[OtherEdges[i].Ind1].second+1; ar[count+2]=(Orientation[OtherEdges[i].Ind1].first)?-1:1;
+			ia[count+3]=i*4+1; ja[count+3]=Orientation[OtherEdges[i].Ind2].second+1; ar[count+3]=(Orientation[OtherEdges[i].Ind2].first)?1:-1;
+
+			glp_set_row_name(mip, i*4+2, ("c"+to_string(i*4+2)).c_str());
+			glp_set_row_bnds(mip, i*4+2, GLP_UP, -3, 1-1+(int)Orientation[OtherEdges[i].Ind1].first+1-(int)Orientation[OtherEdges[i].Ind2].first);
+			ia[count+4]=i*4+2; ja[count+4]=OtherEdgesVar[i].second+1; ar[count+4]=1;
+			ia[count+5]=i*4+2; ja[count+5]=Orientation[OtherEdges[i].Ind1].second+1; ar[count+5]=(Orientation[OtherEdges[i].Ind1].first)?1:-1;
+			ia[count+6]=i*4+2; ja[count+6]=Orientation[OtherEdges[i].Ind2].second+1; ar[count+6]=(Orientation[OtherEdges[i].Ind2].first)?-1:1;
+
+			glp_set_row_name(mip, i*4+3, ("c"+to_string(i*4+3)).c_str());
+			glp_set_row_bnds(mip, i*4+3, GLP_UP, -3, 2-1+(int)RelativePos[make_pair(OtherEdges[i].Ind1, OtherEdges[i].Ind2)].first-1+(int)Orientation[OtherEdges[i].Ind1].first);
+			ia[count+7]=i*4+3; ja[count+7]=OtherEdgesVar[i].second+1; ar[count+7]=1;
+			ia[count+8]=i*4+3; ja[count+8]=pairind+1; ar[count+8]=(RelativePos[make_pair(OtherEdges[i].Ind1, OtherEdges[i].Ind2)].first)?1:-1;
+			ia[count+9]=i*4+3; ja[count+9]=Orientation[OtherEdges[i].Ind1].second+1; ar[count+9]=(Orientation[OtherEdges[i].Ind1].first)?1:-1;
+
+			glp_set_row_name(mip, i*4+4, ("c"+to_string(i*4+4)).c_str());
+			glp_set_row_bnds(mip, i*4+4, GLP_UP, -3, 0+1-(int)RelativePos[make_pair(OtherEdges[i].Ind1, OtherEdges[i].Ind2)].first+1-(int)Orientation[OtherEdges[i].Ind1].first);
+			ia[count+10]=i*4+4; ja[count+10]=OtherEdgesVar[i].second+1; ar[count+10]=1;
+			ia[count+11]=i*4+4; ja[count+11]=pairind+1; ar[count+11]=(RelativePos[make_pair(OtherEdges[i].Ind1, OtherEdges[i].Ind2)].first)?-1:1;
+			ia[count+12]=i*4+4; ja[count+12]=Orientation[OtherEdges[i].Ind1].second+1; ar[count+12]=(Orientation[OtherEdges[i].Ind1].first)?-1:1;
+		}
+		count+=12;
+	}
+
+	int offset=4*OtherEdges.size();
+	int numconstr=0;
+	for(int i=0; i<OldCompNodes.size(); i++)
+		for(int j=i+1; j<OldCompNodes.size(); j++)
+			for(int k=j+1; k<OldCompNodes.size(); k++){
+				int pij=0, pjk=0, pik=0;
+				pij=RelativePos[make_pair(OldCompNodes[i], OldCompNodes[j])].second;
+				pjk=RelativePos[make_pair(OldCompNodes[j], OldCompNodes[k])].second;
+				pik=RelativePos[make_pair(OldCompNodes[i], OldCompNodes[k])].second;
+				int additionterm=-1+(int)RelativePos[make_pair(OldCompNodes[i], OldCompNodes[j])].first-1+(int)RelativePos[make_pair(OldCompNodes[j], OldCompNodes[k])].first+1-(int)RelativePos[make_pair(OldCompNodes[i], OldCompNodes[k])].first;
+				glp_set_row_name(mip, offset+numconstr+1, ("c"+to_string(offset+numconstr+1)).c_str());
+				glp_set_row_bnds(mip, offset+numconstr+1, GLP_DB, 0+additionterm, 1+additionterm);
+				ia[count+1]=offset+numconstr+1; ja[count+1]=pij+1; ar[count+1]=(RelativePos[make_pair(OldCompNodes[i], OldCompNodes[j])].first)?1:-1;
+				ia[count+2]=offset+numconstr+1; ja[count+2]=pjk+1; ar[count+2]=(RelativePos[make_pair(OldCompNodes[j], OldCompNodes[k])].first)?1:-1;
+				ia[count+3]=offset+numconstr+1; ja[count+3]=pik+1; ar[count+3]=(RelativePos[make_pair(OldCompNodes[i], OldCompNodes[k])].first)?-1:1;
+
+				numconstr++;
+				count+=3;
+			}
+	glp_load_matrix(mip, count, ia, ja, ar);
+
+	glp_iocp parm;
+	glp_init_iocp(&parm);
+	parm.presolve = GLP_ON;
+	parm.tm_lim=300000;
+	parm.msg_lev=GLP_MSG_ERR;
+	int err = glp_intopt(mip, &parm);
+
+	if(err==0 || glp_mip_status(mip)==GLP_FEAS){
+		if(err!=0){
+			cout<<"Find feasible solution instead of optimal solution.\n";
+		}
+		for(int i=0; i<OldCompNodes.size(); i++)
+			for(int j=i+1; j<OldCompNodes.size(); j++){
+				Z[i][j]=(glp_mip_col_val(mip, RelativePos[make_pair(OldCompNodes[i], OldCompNodes[j])].second+1)>0.5);
+				if(!RelativePos[make_pair(OldCompNodes[i], OldCompNodes[j])].first)
+					Z[i][j]=1-Z[i][j];
+			}
+		for(int i=0; i<OldCompNodes.size(); i++)
+			Z[i][i]=0;
+		for(int i=0; i<OldCompNodes.size(); i++)
+			for(int j=0; j<i; j++)
+				Z[i][j]=1-Z[j][i];
+
+		for(int i=0; i<OldCompNodes.size(); i++){
+			X[i]=(glp_mip_col_val(mip, Orientation[OldCompNodes[i]].second)>0.5);
+			if(!Orientation[OldCompNodes[i]].first)
+				X[i]=1-X[i];
+		}
+	}
+	else{
+		cout<<"ILP isn't successful\n";
+		if(err==GLP_ETMLIM)
+			cout<<"time limit has been exceeded\n";
+		else if(err==GLP_EBOUND)
+			cout<<"Unable to start the search, because some double-bounded variables have incorrect bounds\n";
+		else if(err==GLP_EROOT)
+			cout<<"optimal basis for initial LP relaxation is not provided\n";
+		else if(err==GLP_ENOPFS)
+			cout<<"LP relaxation of the MIP problem instance has no primal feasible solution\n";
+		else if(err==GLP_ENODFS)
+			cout<<"LP relaxation of the MIP problem instance has no dual feasible solution\n";
+		else if(err==GLP_EFAIL)
+			cout<<"The search was prematurely terminated due to the solver failure.\n";
+		else if(err==GLP_EMIPGAP)
+			cout<<"relative mip gap tolerance has been reached\n";
+		else if(err==GLP_ESTOP)
+			cout<<"The search was prematurely terminated by application.\n";
 	}
 };
 
@@ -3143,8 +3454,12 @@ void SegmentGraph_t::GenerateILP(map<int,int>& CompNodes, vector<Edge_t>& CompEd
 
 	count=0;
 	if(err==0 || glp_mip_status(mip)==GLP_FEAS){
-		if(err!=0)
+		if(err!=0){
 			cout<<"Find feasible solution instead of optimal solution.\n";
+			// for(map<int,int>::iterator it=CompNodes.begin(); it!=CompNodes.end(); it++)
+			// 	cout<<it->first<<"\t";
+			// cout<<endl;
+		}
 		for(int i=0; i<CompNodes.size(); i++)
 			for(int j=i+1; j<CompNodes.size(); j++){
 				Z[i][j]=(glp_mip_col_val(mip, pairoffset+count+1)>0.5);
@@ -3161,6 +3476,9 @@ void SegmentGraph_t::GenerateILP(map<int,int>& CompNodes, vector<Edge_t>& CompEd
 	}
 	else{
 		cout<<"ILP isn't successful\n";
+		// for(map<int,int>::iterator it=CompNodes.begin(); it!=CompNodes.end(); it++)
+		// 	cout<<it->first<<"\t";
+		// cout<<endl;
 		if(err==GLP_ETMLIM)
 			cout<<"time limit has been exceeded\n";
 		else if(err==GLP_EBOUND)
