@@ -1,7 +1,9 @@
 # OVERVIEW
 SQUID is designed to detect transcriptomic structural variations from RNA-seq alignment.
 
-To reproduce the result of applying SQUID on simulation data and previously studied cell lines, follow the instructions from [squidtest](https://github.com/Kingsford-Group/squidtest)
+To reproduce the result of applying SQUID on simulation data and previously studied cell lines, follow the instructions from [squidtest](https://github.com/Kingsford-Group/squidtest).
+
+You can find a describtion of our methods in our [preprint](https://www.biorxiv.org/content/early/2017/09/06/162776) manuscript.
 
 # INSTALLING PRE-COMPILED BINARIES
 If you want to skip the installation process, you can find the binary release [here](https://github.com/Kingsford-Group/squid/releases)!
