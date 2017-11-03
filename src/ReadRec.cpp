@@ -407,12 +407,14 @@ void BuildChimericSBamRecord(SBamrecord_t& SBamrecord, const vector<string>& Ref
 	for(SBamrecord_t::iterator it=newSBamrecord.begin(); it!=newSBamrecord.end(); it++){
 		if(SBamrecord.size()==0)
 			SBamrecord.push_back(*it);
+		else if(it->FirstRead.size()==0 || SBamrecord.back().FirstRead.size()==0)
+			SBamrecord.push_back((*it));
 		else if(it->FirstRead.front().RefID!=SBamrecord.back().FirstRead.front().RefID || it->FirstRead.front().RefPos!=SBamrecord.back().FirstRead.front().RefPos)
 			SBamrecord.push_back(*it);
 		else{
 			bool isdup=false;
 			for(SBamrecord_t::reverse_iterator it2=SBamrecord.rbegin(); it2!=SBamrecord.rend(); it2++){
-				if(it->FirstRead.front().RefID!=it2->FirstRead.front().RefID || it->FirstRead.front().RefPos!=it2->FirstRead.front().RefPos)
+				if(it2->FirstRead.size()==0 || it->FirstRead.front().RefID!=it2->FirstRead.front().RefID || it->FirstRead.front().RefPos!=it2->FirstRead.front().RefPos)
 					break;
 				if(ReadRec_t::Equal(*it, *it2)){
 					isdup=true;
