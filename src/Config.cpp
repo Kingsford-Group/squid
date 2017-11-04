@@ -36,7 +36,7 @@ bool Print_Total_Ordering = false;
 bool Print_Rearranged_Genome = false;
 
 int print_help(){
-	printf("SQUID %s (c) 2017 Cong Ma, Mingfu Shao, Carl Kingsford, and Carnegie Mellong University\n", SQUIDversion.c_str());
+	printf("SQUID %s (c) 2017 Cong Ma, Mingfu Shao, Carl Kingsford, and Carnegie Mellon University\n", SQUIDversion.c_str());
 	printf("\n");
 
 	printf("Usage: squid [options] -b <Input_BAM> -o <Output_Prefix>\n");
