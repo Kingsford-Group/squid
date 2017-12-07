@@ -249,40 +249,6 @@ int ReadRec_t::ReadCoverageGap() {
 	return (static_cast<const ReadRec_t*>(this)->ReadCoverageGap());
 };
 
-void ReadRec_t::ModifybyGraph(SegmentGraph_t& SegmentGraph, const vector< vector<int> >& Components, vector<int>& singleRead_Node, vector< pair<int, int> >& Node_NewChr){
-	vector<int> tmpRead_Node=SegmentGraph.LocateRead(singleRead_Node, *this);
-	singleRead_Node=tmpRead_Node;
-	bool whetherdelete=false;
-	for(unsigned int i=0; i<tmpRead_Node.size(); i++)
-		if(tmpRead_Node[i]==-1)
-			whetherdelete=true;
-	if(whetherdelete){
-		FirstRead.clear(); SecondMate.clear();
-	}
-	else{
-		for(unsigned int i=0; i<FirstRead.size(); i++)
-			FirstRead[i].ModifybyGraph_Single(SegmentGraph, Components, tmpRead_Node[i], Node_NewChr);
-		for(unsigned int i=0; i<SecondMate.size(); i++)
-			SecondMate[i].ModifybyGraph_Single(SegmentGraph, Components, tmpRead_Node[(int)FirstRead.size()+i], Node_NewChr);
-	}
-};
-
-void SingleBamRec_t::ModifybyGraph_Single(SegmentGraph_t& SegmentGraph, const vector< vector<int> >& Components, int nodeidx, vector< pair<int, int> >& Node_NewChr){
-	int oldRefPos=RefPos;
-	int i=Node_NewChr[nodeidx].first, j=Node_NewChr[nodeidx].second;
-	RefID=i;
-	int offset=0;
-	for(int k=0; k<j; k++)
-		offset+=SegmentGraph.vNodes[abs(Components[i][k])-1].Length;
-	if(Components[i][j]>0){
-		RefPos=offset+oldRefPos-SegmentGraph.vNodes[nodeidx].Position;
-	}
-	else{
-		IsReverse=!IsReverse;
-		RefPos=offset+SegmentGraph.vNodes[nodeidx].Position+SegmentGraph.vNodes[nodeidx].Length-oldRefPos-MatchRef;
-	}
-};
-
 string ReadRec_t::Print(){
 	string info=Qname+"\tFirst{";
 	for(vector<SingleBamRec_t>::iterator it=FirstRead.begin(); it!=FirstRead.end(); it++)
