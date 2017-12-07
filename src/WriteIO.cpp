@@ -113,6 +113,52 @@ void WriteBEDPE(string outputfile, SegmentGraph_t& SegmentGraph, vector< vector<
 	output.close();
 };
 
+void TmpWriteBEDPE(string outputfile, SegmentGraph_t& SegmentGraph, vector<string>& RefName){
+	ofstream output(outputfile, ios::out);
+	output<<"# chrom1\tstart1\tend1\tchrom2\tstart2\tend2\tname\tscore\tstrand1\tstrand2\n";
+	for(int i=0; i<SegmentGraph.vEdges.size(); i++){
+		int ind1=SegmentGraph.vEdges[i].Ind1, ind2=SegmentGraph.vEdges[i].Ind2;
+		bool flag_chr=(SegmentGraph.vNodes[ind1].Chr==SegmentGraph.vNodes[ind2].Chr);
+		bool flag_ori=(SegmentGraph.vEdges[i].Head1==false && SegmentGraph.vEdges[i].Head2==true);
+		bool flag_dist=(SegmentGraph.vNodes[ind2].Position-SegmentGraph.vNodes[ind1].Position-SegmentGraph.vNodes[ind1].Length<=Concord_Dist_Pos || ind2-ind1<=Concord_Dist_Idx);
+		if(!flag_chr || !flag_ori || !flag_dist){
+			// chech whether prediction is autosomal or on X Y. remove contig/mitochrondia predictions
+			vector< pair<int,int> > BP;
+			int bp1,bp2;
+			bp1=(SegmentGraph.vEdges[i].Head1?SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Position:(SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Position+SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Length));
+			bp2=(SegmentGraph.vEdges[i].Head2?SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Position:(SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Position+SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Length));
+			BP.push_back(make_pair(bp1,bp2));
+			for(int k=0; k<BP.size(); k++){
+				if(SegmentGraph.vEdges[i].Head1){
+					output<<RefName[SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Chr]<<'\t';
+					output<<BP[k].first<<'\t';
+					output<<(SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Position+SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Length)<<'\t';
+				}
+				else{
+					output<<RefName[SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Chr]<<'\t';
+					output<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Position<<'\t';
+					output<<BP[k].first<<'\t';
+				}
+				if(SegmentGraph.vEdges[i].Head2){
+					output<<RefName[SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Chr]<<'\t';
+					output<<BP[k].second<<'\t';
+					output<<(SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Position+SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Length)<<'\t';
+				}
+				else{
+					output<<RefName[SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Chr]<<'\t';
+					output<<SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind2].Position<<'\t';
+					output<<BP[k].second<<'\t';
+				}
+				output<<".\t"<<SegmentGraph.vEdges[i].Weight<<"\t";
+				output<<(SegmentGraph.vEdges[i].Head1?"-\t":"+\t");
+				output<<(SegmentGraph.vEdges[i].Head2?"-\t":"+\t");
+				output<<endl;
+			}
+		}
+	}
+	output.close();
+};
+
 void OutputNewGenome(SegmentGraph_t& SegmentGraph, vector< vector<int> >& Components, const vector<string>& RefSequence, const vector<string>& RefName, string outputfile){
 	ofstream output(outputfile, ios::out);
 	for(int i=0; i<Components.size(); i++){

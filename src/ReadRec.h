@@ -32,8 +32,6 @@ extern uint16_t Max_LowPhred_Len;
 extern uint8_t Min_Phred;
 extern uint16_t Min_MapQual;
 
-class SegmentGraph_t;
-
 class ReadRec_t{
 public:
     string Qname;
@@ -55,7 +53,6 @@ public:
     bool IsPairDiscordant(bool needcheck=true) const;
     int ReadCoverageGap() const;
     int ReadCoverageGap();
-    void ModifybyGraph(SegmentGraph_t& SegmentGraph, const vector< vector<int> >& Components, vector<int>& singleRead_Node, vector< pair<int, int> >& Node_NewChr);
     string Print();
 };
 
@@ -64,8 +61,6 @@ typedef vector<ReadRec_t> SBamrecord_t;
 void BuildRefName(string bamfile, vector<string>& RefName, std::map<string,int>& RefTable, vector<int>& RefLength);
 
 bool BuildRefSeq(string fafile, const std::map<string,int>& RefTable, vector<int>& RefLength, vector<string>& RefSequence);
-
-void UpdateReference(const SegmentGraph_t& SegmentGraph, const vector< vector<int> >& Components, vector<int>& RefLength, vector<string>& RefSequence);
 
 void BuildChimericSBamRecord(SBamrecord_t& SBamrecord, const vector<string>& RefName, string bamfile);
 

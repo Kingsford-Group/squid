@@ -55,13 +55,25 @@ ReadRec_t::ReadRec_t(BamAlignment record){
 				if(itcigar2->Type!='I')
 					tmpRef+=itcigar2->Length;
 			}
-			SingleBamRec_t tmp(record.RefID, RefPos, ReadPos, tmpRef, tmpRead, record.MapQuality, record.IsReverseStrand(), record.IsFirstMate());
-			if(record.IsReverseStrand())
-				tmp.ReadPos=TotalLen-ReadPos-tmpRead;
-			if(record.IsFirstMate())
-				FirstRead.push_back(tmp);
-			else
-				SecondMate.push_back(tmp);
+			// the following line calculate the ratio of poly A and T. If the aligned block is more than 75% A and T, consider it as polyA/T tail, not actual sequence
+			int polyAcount=0;
+			int polyTcount=0;
+			for(int i=ReadPos; i<ReadPos+tmpRead; i++){
+				if(record.QueryBases[i]=='a' || record.QueryBases[i]=='A')
+					polyAcount++;
+				else if(record.QueryBases[i]=='t' || record.QueryBases[i]=='T')
+					polyTcount++;
+			}
+			// add this aligned block only if it is not poly A/T
+			if(1.0*polyAcount/tmpRead<0.75 && 1.0*polyTcount/tmpRead<0.75){
+				SingleBamRec_t tmp(record.RefID, RefPos, ReadPos, tmpRef, tmpRead, record.MapQuality, record.IsReverseStrand(), record.IsFirstMate());
+				if(record.IsReverseStrand())
+					tmp.ReadPos=TotalLen-ReadPos-tmpRead;
+				if(record.IsFirstMate())
+					FirstRead.push_back(tmp);
+				else
+					SecondMate.push_back(tmp);
+			}
 			ReadPos+=tmpRead;
 			RefPos+=tmpRef;
 			itcigar=itcigar2; itcigar--;
