@@ -19,7 +19,7 @@ BOOST = <path to your_favorite_folder>/boost_1_64_0
 ```
 git clone git://github.com/pezmaster31/bamtools.git
 ```
-2. Make sure CMake version on our system is >=2.64 by running
+2. Make sure [CMake](https://cmake.org/) version on our system is >=2.64 by running
 ```
 cmake --version
 ```

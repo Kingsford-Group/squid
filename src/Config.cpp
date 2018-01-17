@@ -25,6 +25,7 @@ int Concord_Dist_Pos = 50000;
 int Concord_Dist_Idx = 20;
 int Min_Edge_Weight = 5;
 double DiscordantRatio = 8;
+int MaxAllowedDegree = 5;
 	// input and output
 string Input_BAM = "";
 string Input_Chim_BAM = "";
@@ -61,6 +62,7 @@ int print_help(){
 	printf("\t-di\tint\tMaximum distance of segment indexes for concordant alignment (20)\n");
 	printf("\t-w\tint\tMinimum edge weight (5)\n");
 	printf("\t-r\tdouble\tDiscordant edge ratio multiplier / normal tumor cell ratio (8)\n");
+	printf("\t-a\tint\tMax allowed degree (5)\n");
 
 	printf("\tOutput options:\n");
 	printf("\t-G\tbool\tOutput gragh file (0)\n");
@@ -160,6 +162,14 @@ bool parse_arguments(int argc, char* argv[]){
 		if(string(argv[i])=="-r" && i<argc-1){
 			try{
 				DiscordantRatio=atof(argv[i+1]);
+			}
+			catch(exception& e){
+				success=false;
+			}
+		}
+		if(string(argv[i])=="-a" && i<argc-1){
+			try{
+				MaxAllowedDegree=atoi(argv[i+1]);
 			}
 			catch(exception& e){
 				success=false;

@@ -89,9 +89,10 @@ SegmentGraph_t::SegmentGraph_t(const vector<int>& RefLength, SBamrecord_t& Chimr
 	// TmpWriteBEDPE("tmpedges2_before_filterbyweight.txt", *this, RefName);
 	FilterbyWeight();
 	// TmpWriteBEDPE("tmpedges2_before_filterbyinterleave.txt", *this, RefName);
-	FilterbyInterleaving();
+	vector<bool> KeepEdge;
+	FilterbyInterleaving(KeepEdge);
 	// TmpWriteBEDPE("tmpedges2_before_filteredges.txt", *this, RefName);
-	FilterEdges();
+	FilterEdges(KeepEdge);
 	// TmpWriteBEDPE("tmpedges2_before_compressnode.txt", *this, RefName);
 	CompressNode();
 	FurtherCompressNode();
@@ -825,6 +826,8 @@ void SegmentGraph_t::BuildNode_BWA(const vector<int>& RefLength, string bamfile)
 			if((DiscordantCluster.size()!=offsetDiscordantCluster && record.RefID!=DiscordantCluster[offsetDiscordantCluster].RefID) || (ConcordantCluster.size()!=offsetConcordantCluster && record.RefID!=ConcordantCluster[offsetConcordantCluster].RefID) || (PartialAlignCluster.size()!=offsetPartialAlignCluster && record.RefID!=PartialAlignCluster[offsetPartialAlignCluster].RefID))
 				otherrightmost=0;
 			ReadRec_t readrec(record);
+			if(readrec.FirstRead.size()==0 && readrec.SecondMate.size()==0)
+				continue;
 			for(vector<SingleBamRec_t>::iterator it=readrec.FirstRead.begin(); it!=readrec.FirstRead.end(); it++)
 				Reads.push_back(make_pair(it->RefID, make_pair(it->RefPos, it->MatchRef)));
 			for(vector<SingleBamRec_t>::iterator it=readrec.SecondMate.begin(); it!=readrec.SecondMate.end(); it++)
@@ -1667,9 +1670,9 @@ void SegmentGraph_t::RawEdges(SBamrecord_t& Chimrecord, string bamfile){
 			int IHtagvalue=0;
 			if(IHtag)
 				record.GetTag("IH", IHtagvalue);
-			if(record.IsDuplicate() || record.MapQuality==0 || !record.IsMapped())
+			if(record.IsDuplicate() || !record.IsMapped())
 				continue;
-			else if((XAtag || IHtagvalue>1) && record.IsFirstMate())
+			else if((XAtag || IHtagvalue>1 || record.MapQuality==0) && record.IsFirstMate())
 				continue;
 			else if(!(XAtag || IHtagvalue>1) && !record.IsFirstMate())
 				continue;
@@ -1695,7 +1698,7 @@ void SegmentGraph_t::RawEdges(SBamrecord_t& Chimrecord, string bamfile){
 				readrec.FirstRead.push_back(tmp);
 			}
 
-			if(record.IsFirstMate() && (readrec.FirstRead.front().ReadPos <= 15 || readrec.FirstLowPhred)){ // only consider first mate record, to avoid doubling edge weight.
+			if(record.IsFirstMate() && readrec.FirstRead.size()>0 && (readrec.FirstRead.front().ReadPos <= 15 || readrec.FirstLowPhred)){ // only consider first mate record, to avoid doubling edge weight.
 				vector<int> tmpRead_Node=LocateRead(firstfrontindex, readrec);
 				if(tmpRead_Node[0]!=-1)
 					firstfrontindex=tmpRead_Node[0];
@@ -1777,7 +1780,11 @@ void SegmentGraph_t::RawEdges(SBamrecord_t& Chimrecord, string bamfile){
 					}
 				}
 			}
-			else if(!record.IsFirstMate() && (readrec.SecondMate.front().ReadPos <= 15 || readrec.SecondLowPhred)){
+			else if(!record.IsFirstMate() && readrec.SecondMate.size()>0){
+			// else if(!record.IsFirstMate() && readrec.SecondMate.size()>0 && (readrec.SecondMate.front().ReadPos <= 15 || readrec.SecondLowPhred)){
+				readrec.SecondMate.resize(1);
+				readrec.SecondMate[0].MatchRef=15;
+				readrec.SecondMate[0].MatchRead=15;
 				vector<int> tmpRead_Node=LocateRead(firstfrontindex, readrec);
 				if(tmpRead_Node[0]!=-1)
 					firstfrontindex=tmpRead_Node[0];
@@ -2103,9 +2110,10 @@ void SegmentGraph_t::FilterbyWeight(){
 	UpdateNodeLink();
 };*/
 
-void SegmentGraph_t::FilterbyInterleaving(){
+void SegmentGraph_t::FilterbyInterleaving(vector<bool>& KeepEdge){
 	vector<bool> HasInspected(vEdges.size(), false);
-	vector<bool> KeepEdge(vEdges.size(), true);
+	KeepEdge.clear();
+	KeepEdge.assign(vEdges.size(), true);
 	for(int i=0; i<vEdges.size(); i++){
 		if(HasInspected[i])
 			continue;
@@ -2218,16 +2226,6 @@ void SegmentGraph_t::FilterbyInterleaving(){
 		for(int j=0; j<NearbyIdx.size(); j++)
 			HasInspected[NearbyIdx[j]]=true;
 	}
-	// update Edge vector, throw away edges that don't have KeepEdge to be true
-	vector<Edge_t> tmpEdges;
-	tmpEdges.reserve(vEdges.size());
-	for(int i=0; i<vEdges.size(); i++){
-		if(KeepEdge[i])
-			tmpEdges.push_back(vEdges[i]);
-	}
-	tmpEdges.reserve(tmpEdges.size());
-	vEdges=tmpEdges;
-	UpdateNodeLink();
 };
 
 /*void SegmentGraph_t::FilterbyInterleaving(){
@@ -2410,7 +2408,7 @@ void SegmentGraph_t::GroupSelect(int node, vector<Edge_t*>& Edges, int sumweight
 		}
 };
 
-void SegmentGraph_t::FilterEdges(){
+void SegmentGraph_t::FilterEdges(const vector<bool>& KeepEdge){
 	vector<int> BadNodes;
 	vector<Edge_t> ToDelete;
 	for(int i=0; i<vNodes.size(); i++){
@@ -2436,7 +2434,7 @@ void SegmentGraph_t::FilterEdges(){
 			headcount=GroupConnection(i, vNodes[i].HeadEdges, sumweight, HeadConn, HeadLabel);
 		if(vNodes[i].TailEdges.size()!=0)
 			tailcount=GroupConnection(i, vNodes[i].TailEdges, sumweight, TailConn, TailLabel);
-		if(headcount+tailcount>5)
+		if(headcount+tailcount >= MaxAllowedDegree)
 			BadNodes.push_back(i);
 		else{
 			if(headcount>1)
@@ -2469,7 +2467,7 @@ void SegmentGraph_t::FilterEdges(){
 			if((vEdges[i].Weight<=Min_Edge_Weight+2 && ratio>3) || (vEdges[i].Weight>Min_Edge_Weight+2 && ratio>50))
 				cond2=false;
 		}
-		if(cond1 && cond2)
+		if(KeepEdge[i] && cond1 && cond2)
 			tmpEdges.push_back(vEdges[i]);
 	}
 	tmpEdges.reserve(tmpEdges.size());
@@ -3149,7 +3147,8 @@ vector<int> SegmentGraph_t::MincutRecursion(std::map<int,int> CompNodes, vector<
 				Z[j].resize(j+1, 0);
 				Z[j].resize(CompNodes.size(), 1);
 			}
-			GenerateSqueezedILP(CompNodes, CompEdges, Z, X);
+			GenerateILP(CompNodes, CompEdges, Z, X);
+			// GenerateSqueezedILP(CompNodes, CompEdges, Z, X);
 
 			for(std::map<int,int>::iterator it=CompNodes.begin(); it!=CompNodes.end(); it++){
 				int pos=CompNodes.size();
@@ -3769,13 +3768,7 @@ void SegmentGraph_t::GenerateILP(map<int,int>& CompNodes, vector<Edge_t>& CompEd
 	int err = glp_intopt(mip, &parm);
 
 	count=0;
-	if(err==0 || glp_mip_status(mip)==GLP_FEAS){
-		if(err!=0){
-			cout<<"Find feasible solution instead of optimal solution.\n";
-			// for(map<int,int>::iterator it=CompNodes.begin(); it!=CompNodes.end(); it++)
-			// 	cout<<it->first<<"\t";
-			// cout<<endl;
-		}
+	if(err==0){
 		for(int i=0; i<CompNodes.size(); i++)
 			for(int j=i+1; j<CompNodes.size(); j++){
 				Z[i][j]=(glp_mip_col_val(mip, pairoffset+count+1)>0.5);
@@ -3791,10 +3784,6 @@ void SegmentGraph_t::GenerateILP(map<int,int>& CompNodes, vector<Edge_t>& CompEd
 			X[i]=(glp_mip_col_val(mip, i+1)>0.5);
 	}
 	else{
-		cout<<"ILP isn't successful\n";
-		// for(map<int,int>::iterator it=CompNodes.begin(); it!=CompNodes.end(); it++)
-		// 	cout<<it->first<<"\t";
-		// cout<<endl;
 		if(err==GLP_ETMLIM)
 			cout<<"time limit has been exceeded\n";
 		else if(err==GLP_EBOUND)

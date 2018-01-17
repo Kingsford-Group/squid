@@ -4,7 +4,7 @@ SQUID is designed to detect transcriptomic structural variations from RNA-seq al
 To reproduce the result of applying SQUID on simulation data and previously studied cell lines, follow the instructions from [squidtest](https://github.com/Kingsford-Group/squidtest)
 
 # INSTALLING PRE-COMPILED BINARIES
-If you want to skip the installation process, you can find the binary release [here](https://github.com/Kingsford-Group/squid/releases)!
+You do NOT need to install SQUID before using it, find the binary release [here](https://github.com/Kingsford-Group/squid/releases)!
 
 # BUILDING FROM SOURCE
 
@@ -35,6 +35,8 @@ SQUID supports the following options:
  -dp        | 50000         | int       | Maximum paired-end aligning distance to be count as concordant alignment 
  -di        | 20            | int       | Maximum distance of segment indexes to be count as read-through 
  -w         |  5            | int       | Minimum edge weight 
+ -r         |  8            | double    | Discordant edge ratio multiplier (normal/tumor cell ratio)
+ -a         |  5            | int       | Max allowed degree
  -G         |  0            | bool      | Whether or not output graph file (0 for not outputing, 1 for outputing) 
  -CO        |  0            | bool      | Whether or not output ordering of connected components (0 for not outputing, 1 for outputing) 
  -TO        |  0            | bool      | Whether or not output ordering of all segments (0 for not outputing, 1 for outputing) 
