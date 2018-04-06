@@ -467,7 +467,7 @@ void WriteRelaxedJunction(string outfile, vector<SV_t>& SVs, vector<bool>& flags
 
 void WriteAlternativeJunction(string outfile, vector< vector<SV_t> >& AltSVs, vector<string>& Genome, vector<string>& RefName)
 {
-	ofstrq output(outfile, ios::out);
+	ofstream output(outfile, ios::out);
 	for(int i=0; i<AltSVs.size(); i++){
 		for(int j=0; j<AltSVs[i].size(); j++){
 			const SV_t& sv=AltSVs[i][j];
