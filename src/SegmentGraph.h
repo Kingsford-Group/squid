@@ -98,8 +98,10 @@ public:
 	void ConnectedComponent(int & maxcomponentsize);
 	void ConnectedComponent();
 	void MultiplyDisEdges();
+	void DeMultiplyDisEdges();
 
 	void ExactBreakpoint(SBamrecord_t& Chimrecord, map<Edge_t, vector< pair<int,int> > >& ExactBP);
+	void ExactBPConcordantSupport(string Input_BAM, SBamrecord_t& Chimrecord, const map<Edge_t, vector< pair<int,int> > >& ExactBP, map<Edge_t, vector< pair<int,int> > >& ExactBP_concord_support);
 	void OutputGraph(string outputfile);
 
 	vector< vector<int> > Ordering();

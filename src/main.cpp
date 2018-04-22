@@ -53,7 +53,10 @@ int main(int argc, char* argv[]){
 			WriteComponents(Output_Prefix+"_component.txt", Components);
 		map<Edge_t, vector< pair<int,int> > > ExactBP;
 		SegmentGraph.ExactBreakpoint(Chimrecord, ExactBP);
-		WriteBEDPE(Output_Prefix+"_sv.txt", SegmentGraph, Components, Node_NewChr, RefName, ExactBP);
+		map<Edge_t, vector< pair<int,int> > > ExactBP_concord_support;
+		SegmentGraph.ExactBPConcordantSupport(Input_BAM, Chimrecord, ExactBP, ExactBP_concord_support);
+		SegmentGraph.DeMultiplyDisEdges();
+		WriteBEDPE(Output_Prefix+"_sv.txt", SegmentGraph, Components, Node_NewChr, RefName, ExactBP, ExactBP_concord_support);
 
 		if(Print_Rearranged_Genome){
 			vector<string> RefSequence;

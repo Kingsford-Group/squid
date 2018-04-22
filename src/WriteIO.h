@@ -16,7 +16,7 @@ extern int Concord_Dist_Idx;
 
 vector< vector<int> > ReadComponents(string file);
 void WriteComponents(string outputfile, vector< vector<int> > Components);
-void WriteBEDPE(string outputfile, SegmentGraph_t& SegmentGraph, vector< vector<int> >& Components, vector< pair<int, int> >& Node_NewChr, vector<string>& RefName, map<Edge_t, vector< pair<int,int> > >& ExactBP);
+void WriteBEDPE(string outputfile, SegmentGraph_t& SegmentGraph, vector< vector<int> >& Components, vector< pair<int, int> >& Node_NewChr, vector<string>& RefName, map<Edge_t, vector< pair<int,int> > >& ExactBP, map<Edge_t, vector< pair<int,int> > >& ExactBP_concord_support);
 void OutputNewGenome(SegmentGraph_t& SegmentGraph, vector< vector<int> >& Components, const vector<string>& RefSequence, const vector<string>& RefName, string outputfile);
 void TmpWriteBEDPE(string outputfile, SegmentGraph_t& SegmentGraph, vector<string>& RefName);
 

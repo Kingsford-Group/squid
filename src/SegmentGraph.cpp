@@ -1557,7 +1557,7 @@ void SegmentGraph_t::RawEdgesOther(SBamrecord_t& Chimrecord, string bamfile){
 				whetherbuildedge=true;
 			if(whetherbuildedge){ // only consider first mate record, to avoid doubling edge weight.
 				vector<int> tmpRead_Node=LocateRead(firstfrontindex, readrec);
-				if(tmpRead_Node[0]!=-1)
+				if(tmpRead_Node.size()!=0 && tmpRead_Node[0]!=-1)
 					firstfrontindex=tmpRead_Node[0];
 				for(int k=0; k<tmpRead_Node.size(); k++)
 					if(tmpRead_Node[k]==-1){
@@ -2484,6 +2484,9 @@ void SegmentGraph_t::CompressNode(){
 		LinkedNode.push_back(it->Ind1);
 		LinkedNode.push_back(it->Ind2);
 	}
+	if(LinkedNode.size()==0)
+		cout<<"Error: 0 nodes are connected by edges.\n";
+	assert(LinkedNode.size()!=0);
 	sort(LinkedNode.begin(), LinkedNode.end());
 	vector<int>::iterator endit=unique(LinkedNode.begin(), LinkedNode.end());
 	LinkedNode.resize(distance(LinkedNode.begin(), endit));
@@ -2958,6 +2961,13 @@ void SegmentGraph_t::MultiplyDisEdges(){
 	}
 };
 
+void SegmentGraph_t::DeMultiplyDisEdges(){
+	for(vector<Edge_t>::iterator it=vEdges.begin(); it!=vEdges.end(); it++){
+		if(IsDiscordant(*it) && DiscordantRatio!=1)
+			it->Weight=(int)it->Weight/DiscordantRatio;
+	}
+};
+
 void SegmentGraph_t::ExactBreakpoint(SBamrecord_t& Chimrecord, map<Edge_t, vector< pair<int,int> > >& ExactBP){
 	ExactBP.clear();
 	int firstfrontindex=0;
@@ -3020,6 +3030,146 @@ void SegmentGraph_t::ExactBreakpoint(SBamrecord_t& Chimrecord, map<Edge_t, vecto
 	for(map<Edge_t, vector< pair<int,int> > >::iterator it=ExactBP.begin(); it!=ExactBP.end(); it++){
 		CountTop(it->first, it->second);
 	}
+};
+
+void SegmentGraph_t::ExactBPConcordantSupport(string Input_BAM, SBamrecord_t& Chimrecord, const map<Edge_t, vector< pair<int,int> > >& ExactBP, map<Edge_t, vector< pair<int,int> > >& ExactBP_concord_support){
+	// this function is to count the number of concordant fragments at each exact breakpoint position. 
+	// Fragment refers to paired-end reads. Insertion in the middle of paired-end reads also count for coverage.
+	// extract the Chr and position information for each exact breakpoint in TSVs
+	time_t CurrentTime;
+	string CurrentTimeStr;
+	ExactBP_concord_support.clear();
+
+	vector< pair<int,int> > BPs; // <Chr, Position>
+	for(vector<Edge_t>::iterator itedge = vEdges.begin(); itedge!=vEdges.end(); itedge++){
+		map<Edge_t, vector< pair<int,int> > >::const_iterator itmap = ExactBP.find(*itedge);
+		if(itmap!=ExactBP.cend() && itmap->second.size()!=0){
+			for(vector< pair<int,int> >::const_iterator itpos=itmap->second.cbegin(); itpos!=itmap->second.cend(); itpos++){
+				BPs.push_back(make_pair(vNodes[(itmap->first).Ind1].Chr, itpos->first));
+				BPs.push_back(make_pair(vNodes[(itmap->first).Ind2].Chr, itpos->second));
+			}
+		}
+		else{
+			BPs.push_back( make_pair(vNodes[itedge->Ind1].Chr, vNodes[itedge->Ind1].Position) );
+			if(!itedge->Head1)
+				BPs.back().second += vNodes[itedge->Ind1].Length;
+			BPs.push_back( make_pair(vNodes[itedge->Ind2].Chr, vNodes[itedge->Ind2].Position) );
+			if(!itedge->Head2)
+				BPs.back().second += vNodes[itedge->Ind2].Length;
+		}
+	}
+	sort(BPs.begin(), BPs.end(), [](pair<int,int> a, pair<int,int> b){if(a.first!=b.first) return a.first<b.first; else return a.second<b.second;} );
+
+	// Extract the names of chimeric alignments, since some chimeric alignments also have a record in concordant bam
+	vector<string> ChimName(Chimrecord.size());
+	for(SBamrecord_t::const_iterator it=Chimrecord.cbegin(); it!=Chimrecord.cend(); it++)
+		ChimName.push_back(it->Qname);
+	sort(ChimName.begin(), ChimName.end());
+	vector<string>::iterator it=unique(ChimName.begin(), ChimName.end());
+	ChimName.resize(distance(ChimName.begin(), it));
+
+	// output time info
+	time(&CurrentTime);
+	CurrentTimeStr=ctime(&CurrentTime);
+	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Calculating concordant fragment coverage of breakpoints."<<endl;
+	// read concordang bamfile, and calculate the coverage info
+	vector<int> Coverages(BPs.size(), 0);
+	int indBP = 0;
+	BamReader bamreader; bamreader.Open(Input_BAM);
+	if(bamreader.IsOpen()){
+		BamAlignment record;
+		while(bamreader.GetNextAlignment(record)){
+			// only considers uniquely mapped reads
+			bool XAtag=record.HasTag("XA");
+			bool IHtag=record.HasTag("IH");
+			int IHtagvalue=0;
+			if(IHtag)
+				record.GetTag("IH", IHtagvalue);
+			if(XAtag || IHtagvalue>1 || record.MapQuality<Min_MapQual || record.IsDuplicate() || !record.IsMapped() || record.RefID==-1 || binary_search(ChimName.begin(), ChimName.end(), record.Name))
+				continue;
+			// To remove re-counting for the same paired-end reads, only considers the alignment record to the right
+			if(record.IsMateMapped() && record.MateRefID==record.RefID && record.MatePosition>record.Position)
+				continue;
+			else if(record.IsMateMapped() && record.MateRefID==record.RefID && record.MatePosition==record.Position && record.IsSecondMate())
+				continue;
+			// check whether the current BP index is already at the end
+			if(indBP == BPs.size())
+				break;
+			// collect information of the alignment
+			int alignChr = record.RefID;
+			int alignStart = record.Position;
+			int alignEnd = record.GetEndPosition();
+			if(record.IsMateMapped() && record.MateRefID==record.RefID){
+				if(alignStart < record.MatePosition)
+					cout<<"Error: not the right alignment\t"<<alignStart<<"\t"<<record.MatePosition<<endl;
+				assert(alignStart >= record.MatePosition);
+				alignStart = record.MatePosition;
+			}
+			// compare to current BP
+			if(alignChr > BPs[indBP].first || (alignChr == BPs[indBP].first && alignStart > BPs[indBP].second+Concord_Dist_Pos))
+				indBP ++;
+			for(int indBP2 = indBP; indBP2 < BPs.size(); indBP2++){
+				if(alignChr == BPs[indBP2].first && alignStart <= BPs[indBP2].second && alignEnd > BPs[indBP2].second){
+					Coverages[indBP2] ++;
+				}
+				else if(alignChr < BPs[indBP2].first || (alignChr == BPs[indBP2].first && alignEnd <= BPs[indBP2].second))
+					break;
+			}
+		}
+	}
+	bamreader.Close();
+
+	// add the coverage for pair of breakpoints of each edge
+	for(vector<Edge_t>::iterator itedge=vEdges.begin(); itedge!=vEdges.end(); itedge++){
+		map<Edge_t, vector< pair<int,int> > >::const_iterator itmap = ExactBP.find(*itedge);
+		vector< pair<int,int> > supports;
+		if(itmap!=ExactBP.cend() && itmap->second.size()!=0){
+			for(vector< pair<int,int> >::const_iterator itpos=itmap->second.cbegin(); itpos!=itmap->second.cend(); itpos++){
+				pair<int,int> bp1 = make_pair(vNodes[(itmap->first).Ind1].Chr, itpos->first);
+				pair<int,int> bp2 = make_pair(vNodes[(itmap->first).Ind2].Chr, itpos->second);
+				// find indexes in vector BPs
+				vector< pair<int,int> >::iterator it1 = lower_bound(BPs.begin(), BPs.end(), bp1, [](pair<int,int> a, pair<int,int> b){if(a.first!=b.first) return a.first<b.first; else return a.second<b.second;} );
+				if(it1==BPs.end() || it1->first!=bp1.first || it1->second!=bp1.second)
+					cout<<"Error: not finding breakpoint\t("<<(bp1.first)<<","<<(bp1.second)<<")\n";
+				assert(it1!=BPs.end() && it1->first == bp1.first && it1->second == bp1.second);
+				vector< pair<int,int> >::iterator it2 = lower_bound(BPs.begin(), BPs.end(), bp2, [](pair<int,int> a, pair<int,int> b){if(a.first!=b.first) return a.first<b.first; else return a.second<b.second;} );
+				if(it2==BPs.end() || it2->first!=bp2.first || it2->second!=bp2.second)
+					cout<<"Error: not finding breakpoint\t("<<(bp2.first)<<","<<(bp2.second)<<")\n";
+				assert(it2!=BPs.end() && it2->first == bp2.first && it2->second == bp2.second);
+				// pushing support map
+				supports.push_back(make_pair(Coverages[distance(BPs.begin(),it1)], Coverages[distance(BPs.begin(),it2)]));
+			}
+		}
+		else{
+			pair<int,int> bp1 = make_pair(vNodes[itedge->Ind1].Chr, vNodes[itedge->Ind1].Position);
+			if(!itedge->Head1)
+				bp1.second += vNodes[itedge->Ind1].Length;
+			pair<int,int> bp2 = make_pair(vNodes[itedge->Ind2].Chr, vNodes[itedge->Ind2].Position);
+			if(!itedge->Head2)
+				bp2.second += vNodes[itedge->Ind2].Length;
+			// find indexes in vector BPs
+			vector< pair<int,int> >::iterator it1 = lower_bound(BPs.begin(), BPs.end(), bp1, [](pair<int,int> a, pair<int,int> b){if(a.first!=b.first) return a.first<b.first; else return a.second<b.second;} );
+			if(it1==BPs.end() || it1->first!=bp1.first || it1->second!=bp1.second)
+				cout<<"Error: not finding breakpoint\t("<<(bp1.first)<<","<<(bp1.second)<<")\n";
+			assert(it1!=BPs.end() && it1->first == bp1.first && it1->second == bp1.second);
+			vector< pair<int,int> >::iterator it2 = lower_bound(BPs.begin(), BPs.end(), bp2, [](pair<int,int> a, pair<int,int> b){if(a.first!=b.first) return a.first<b.first; else return a.second<b.second;} );
+			if(it2==BPs.end() || it2->first!=bp2.first || it2->second!=bp2.second)
+				cout<<"Error: not finding breakpoint\t("<<(bp2.first)<<","<<(bp2.second)<<")\n";
+			assert(it2!=BPs.end() && it2->first == bp2.first && it2->second == bp2.second);
+			// pushing support map
+			supports.push_back(make_pair(Coverages[distance(BPs.begin(),it1)], Coverages[distance(BPs.begin(),it2)]));
+		}
+		ExactBP_concord_support[*itedge] = supports;
+	}
+
+	// sanity check
+	if(ExactBP_concord_support.size() != vEdges.size())
+		cout<<"Error: edges in concordant support keys is more than edges in segment graph.\n";
+
+	// output time info
+	time(&CurrentTime);
+	CurrentTimeStr=ctime(&CurrentTime);
+	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Finish calculating concordant fragment coverage of breakpoints."<<endl;
 };
 
 void SegmentGraph_t::OutputGraph(string outputfile){

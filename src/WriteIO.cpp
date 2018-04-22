@@ -42,10 +42,12 @@ void WriteComponents(string outputfile, vector< vector<int> > Components){
 	output.close();
 };
 
-void WriteBEDPE(string outputfile, SegmentGraph_t& SegmentGraph, vector< vector<int> >& Components, vector< pair<int, int> >& Node_NewChr, vector<string>& RefName, map<Edge_t, vector< pair<int,int> > >& ExactBP){
+void WriteBEDPE(string outputfile, SegmentGraph_t& SegmentGraph, vector< vector<int> >& Components, vector< pair<int, int> >& Node_NewChr, 
+	vector<string>& RefName, map<Edge_t, vector< pair<int,int> > >& ExactBP, map<Edge_t, vector< pair<int,int> > >& ExactBP_concord_support)
+{
 	sort(SegmentGraph.vEdges.begin(), SegmentGraph.vEdges.end(),  [](Edge_t a, Edge_t b){return a.Weight>b.Weight;});
 	ofstream output(outputfile, ios::out);
-	output<<"# chrom1\tstart1\tend1\tchrom2\tstart2\tend2\tname\tscore\tstrand1\tstrand2\n";
+	output<<"# chrom1\tstart1\tend1\tchrom2\tstart2\tend2\tname\tscore\tstrand1\tstrand2\tnum_concordantfrag_bp1\tnum_concordantfrag_bp2\n";
 	for(int i=0; i<SegmentGraph.vEdges.size(); i++){
 		int ind1=SegmentGraph.vEdges[i].Ind1, ind2=SegmentGraph.vEdges[i].Ind2;
 		bool flag_chr=(SegmentGraph.vNodes[ind1].Chr==SegmentGraph.vNodes[ind2].Chr);
@@ -73,6 +75,11 @@ void WriteBEDPE(string outputfile, SegmentGraph_t& SegmentGraph, vector< vector<
 				// 	continue;
 				map<Edge_t, vector< pair<int,int> > >::iterator itmap=ExactBP.find(SegmentGraph.vEdges[i]);
 				vector< pair<int,int> > BP;
+				map<Edge_t, vector< pair<int,int> > >::const_iterator itsup = ExactBP_concord_support.find(SegmentGraph.vEdges[i]);
+				if(itsup == ExactBP_concord_support.cend())
+					cout<<"Error: "<<i<<"\t"<<(itmap->first).Ind1<<"\t"<<(itmap->first).Ind2<<endl;
+				assert(itsup != ExactBP_concord_support.cend());
+				const vector< pair<int,int> >& Support = itsup->second;
 				if(itmap==ExactBP.end() || itmap->second.size()==0){
 					int bp1,bp2;
 					bp1=(SegmentGraph.vEdges[i].Head1?SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Position:(SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Position+SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Length));
@@ -81,6 +88,9 @@ void WriteBEDPE(string outputfile, SegmentGraph_t& SegmentGraph, vector< vector<
 				}
 				else
 					BP=itmap->second;
+				if(BP.size() != Support.size())
+					cout<<"Error: number of breakpoints in BPs is different from number of breakpoints in Support.\n";
+				assert(BP.size() == Support.size());
 				for(int k=0; k<BP.size(); k++){
 					if(SegmentGraph.vEdges[i].Head1){
 						output<<RefName[SegmentGraph.vNodes[SegmentGraph.vEdges[i].Ind1].Chr]<<'\t';
@@ -105,7 +115,7 @@ void WriteBEDPE(string outputfile, SegmentGraph_t& SegmentGraph, vector< vector<
 					output<<".\t"<<SegmentGraph.vEdges[i].Weight<<"\t";
 					output<<(SegmentGraph.vEdges[i].Head1?"-\t":"+\t");
 					output<<(SegmentGraph.vEdges[i].Head2?"-\t":"+\t");
-					output<<endl;
+					output<<(Support[k].first)<<"\t"<<(Support[k].second)<<endl;
 				}
 			}
 		}
