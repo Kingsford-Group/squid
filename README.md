@@ -1,7 +1,7 @@
 # OVERVIEW
-SQUID is designed to detect transcriptomic structural variations from RNA-seq alignment.
+SQUID is designed to detect both fusion-gene and non-fusino-gene transcriptomic structural variations from RNA-seq alignment.
 
-To reproduce the result of applying SQUID on simulation data and previously studied cell lines, follow the instructions from [squidtest](https://github.com/Kingsford-Group/squidtest)
+SQUID paper is published at [Genome Biology](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-018-1421-5). To reproduce the result of applying SQUID on simulation data and previously studied cell lines, follow the instructions from [squidtest](https://github.com/Kingsford-Group/squidtest)
 
 # INSTALLING PRE-COMPILED BINARIES
 You do NOT need to install SQUID before using it, find the binary release [here](https://github.com/Kingsford-Group/squid/releases)!
@@ -51,16 +51,18 @@ SQUID supports the following options:
 	- start2: starting position of the segment of the second breakpoint, or the predicted breakpoint position if strand2 is "-".
 	- end2: ending position of the segment of the second breakpoint, or the predicted breakpoint position if strand2 is "+".
 	- name: TSV is not named yet, this column shows with dot.
-	- score: Edge weight, or weighted number of reads supporting this TSV.
+	- score: number of reads supporting this TSV (without weighted by Discordant edge ratio multiplier).
 	- strand1: strand of the first segment in TSV.
 	- strand2: strand of the second segment in TSV.
+	- num_concordantfrag_bp1: number of concordant paired-end reads covering the first breakpoint. For a concordant paired-end read, it includes two ends and a inserted region in between, if any of the 3 regions covers the breakpoint, the read is counted in this number.
+	- num_concordantfrag_bp2: number of concordant paired-end reads covering the second breakpoint. The count is defined in the same way as num_concordantfrag_bp1.
 	example record:
-	> 17  38135881  38136308  17  38137195  38137773  .  5480  +  + 
+	> 17  38135881  38136308  17  38137195  38137773  .  685  +  +  106  221
 	>
-	This means the right end (position 38136308) of segment 38135881-38137195 on chr17 is connected to the right end (position 38137773) of segment 38137195-38137773 also on chr17. And the score of this TSV is 5480.
-	> 5  176370330  176370489  8  128043988  128044089  .  328  -  + 
+	This means the right end (position 38136308) of segment 38135881-38137195 on chr17 is connected to the right end (position 38137773) of segment 38137195-38137773 also on chr17. The number of supporting reads for this TSV is 685. There are 106 concordant paired-end reads covering the first breakpoint (chr17 38136308), and 221 concordant paired-end reads covering the second breakpoint (chr17 38137773).
+	> 5  176370330  176370489  8  128043988  128044089  .  328  -  +  588  1029
 	>
-	This means the left end (position 176370330) of segment 176370330-176370489 on chr5 is connected with the right end (position 128044089) of segment 128043988-128044089 on chr8.
+	This means the left end (position 176370330) of segment 176370330-176370489 on chr5 is connected with the right end (position 128044089) of segment 128043988-128044089 on chr8. There are 588 concordant reads covering the first breakpoint (chr5 176370330), and 1029 concordant reads covering the second breakpoint (chr8 128044089).
 + <Output_Prefix>_graph.txt: genome segment graph, will be output only if -G is set to 1. It has two types of records, nodes (or segment) and edges.
 	- node: for each node, the following information are included. ID, start position, end position, label for connected component.
 	- edge: for each edge, the following information are included. ID, node id for the first segment, strand of the first segment, node id for the second segment, strand for the second segment, edge weight.
