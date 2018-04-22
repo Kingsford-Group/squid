@@ -219,17 +219,20 @@ void FindReadSupport(SBamrecord_t Chimrecord, vector<SV_t>& SVs, vector< vector<
 	}
 };
 
-vector<bool> ExactSequence(vector<SV_t>& SVs, vector< vector<SV_t> >& ReadSVs, vector< pair<int,int> >& NumSupports, vector< vector<SV_t> >& AltSVs, int thresh=5) // if an SV has split read support, modify the SV to only contain the exact region
+vector<bool> ExactSequence(vector<SV_t>& SVs, vector< vector<SV_t> >& ReadSVs, vector<int>& NumSupports, vector< vector<SV_t> >& AltSVs, int thresh=5) // if an SV has split read support, modify the SV to only contain the exact region
 {
 	NumSupports.clear();
 	AltSVs.clear();
 	vector<bool> flags(SVs.size(), false);
 	for(int i=0; i<ReadSVs.size(); i++){
-		NumSupports.push_back( make_pair(0,0) );
+		NumSupports.push_back(0);
+		vector<SV_t> alternativeSVs, tmpalternativeSVs;
 		const vector<SV_t>& readsvs=ReadSVs[i];
 		SV_t& sv=SVs[i];
-		if(readsvs.size()==0)
+		if(readsvs.size()==0){
+			AltSVs.push_back(alternativeSVs);
 			continue;
+		}
 		// sort each breakpoint of the SV
 		vector<Breakpoint_t> BP1s;
 		vector<Breakpoint_t> BP2s;
@@ -249,23 +252,28 @@ vector<bool> ExactSequence(vector<SV_t>& SVs, vector< vector<SV_t> >& ReadSVs, v
 				else if(a.StartPos!=b.StartPos) return a.StartPos<b.StartPos; else return a.IsLeft<b.IsLeft;} );
 		// check whether the breakpoints hit predicted breakpoints in thresh window
 		bool hitbp1=false, hitbp2=false;
+		int support_bp1 = 0, support_bp2 = 0;
 		for(vector<Breakpoint_t>::iterator it=BP1s.begin(); it!=BP1s.end(); it++){
-			if((sv.BP1.IsLeft && abs(sv.BP1.StartPos-it->StartPos)<thresh) || (!sv.BP1.IsLeft && abs(sv.BP1.EndPos-it->EndPos)<thresh))
+			if((sv.BP1.IsLeft && abs(sv.BP1.StartPos-it->StartPos)<thresh) || (!sv.BP1.IsLeft && abs(sv.BP1.EndPos-it->EndPos)<thresh)){
 				hitbp1=true;
+				support_bp1++;
+			}
 		}
 		for(vector<Breakpoint_t>::iterator it=BP2s.begin(); it!=BP2s.end(); it++){
-			if((sv.BP2.IsLeft && abs(sv.BP2.StartPos-it->StartPos)<thresh) || (!sv.BP2.IsLeft && abs(sv.BP2.EndPos-it->EndPos)<thresh))
+			if((sv.BP2.IsLeft && abs(sv.BP2.StartPos-it->StartPos)<thresh) || (!sv.BP2.IsLeft && abs(sv.BP2.EndPos-it->EndPos)<thresh)){
 				hitbp2=true;
+				support_bp2++;
+			}
 		}
-		if(!hitbp1 || !hitbp2)
+		if(!hitbp1 || !hitbp2){
+			AltSVs.push_back(alternativeSVs);
 			continue;
+		}
 		// if both breakpoints has split read hitting them, extend from split read
 		// cout<<"old\t"<<(sv.BP1.Chr)<<"\t"<<(sv.BP1.StartPos)<<"\t"<<(sv.BP1.EndPos)<<"\t"<<(sv.BP1.IsLeft)<<"\t";
 		// cout<<(sv.BP2.Chr)<<"\t"<<(sv.BP2.StartPos)<<"\t"<<(sv.BP2.EndPos)<<"\t"<<(sv.BP2.IsLeft)<<endl;
 		bool flag_bp1 = false;
 		bool flag_bp2 = false;
-		int support_bp1 = 0;
-		int support_bp2 = 0;
 		if(sv.BP1.IsLeft){
 			vector<Breakpoint_t>::iterator it=BP1s.begin();
 			while(abs(it->StartPos-sv.BP1.StartPos)>=thresh && it!=BP1s.end())
@@ -278,7 +286,6 @@ vector<bool> ExactSequence(vector<SV_t>& SVs, vector< vector<SV_t> >& ReadSVs, v
 			if(sv.BP1.StartPos<rightmost){
 				sv.BP1.EndPos=(rightmost<sv.BP1.EndPos)?rightmost:(sv.BP1.EndPos);
 				flag_bp1 = true;
-				support_bp1++;
 			}
 		}
 		else{
@@ -293,7 +300,6 @@ vector<bool> ExactSequence(vector<SV_t>& SVs, vector< vector<SV_t> >& ReadSVs, v
 			if(leftmost < sv.BP1.EndPos){
 				sv.BP1.StartPos=(leftmost>sv.BP1.StartPos)?leftmost:(sv.BP1.StartPos);
 				flag_bp1 = true;
-				support_bp1++;
 			}
 		}
 		if(sv.BP2.IsLeft){
@@ -308,7 +314,6 @@ vector<bool> ExactSequence(vector<SV_t>& SVs, vector< vector<SV_t> >& ReadSVs, v
 			if(sv.BP2.StartPos < rightmost){
 				sv.BP2.EndPos=(rightmost<sv.BP2.EndPos)?rightmost:(sv.BP2.EndPos);
 				flag_bp2 = true;
-				support_bp2++;
 			}
 		}
 		else{
@@ -323,46 +328,50 @@ vector<bool> ExactSequence(vector<SV_t>& SVs, vector< vector<SV_t> >& ReadSVs, v
 			if(leftmost < sv.BP2.EndPos){
 				sv.BP2.StartPos=(leftmost>sv.BP2.StartPos)?leftmost:(sv.BP2.StartPos);
 				flag_bp2 = true;
-				support_bp2++;
 			}
 		}
 		// record whether have spanning read information
 		if(flag_bp1 && flag_bp2){
 			flags[i] = true;
-			NumSupports.back() = make_pair(support_bp1, support_bp2);
+			NumSupports.back() = min(support_bp1, support_bp2);
 		}
 		
 		// find alternative junction points
-		vector<SV_t> alternativeSVs, tmpalternativeSVs;
 		for(vector<SV_t>::const_iterator it=readsvs.cbegin(); it!=readsvs.cend(); it++){
 			SV_t altsv(sv.BP1, sv.BP2);
 			bool hasalt_bp1 = false;
 			bool hasalt_bp2 = false;
+			bool diffalt_bp1 = false;
+			bool diffalt_bp2 = false;
 			if(sv.BP1.IsLeft==it->BP1.IsLeft){
 				if(sv.BP1.IsLeft && abs(sv.BP1.StartPos - it->BP1.StartPos)<thresh){
 					altsv.BP1.StartPos = it->BP1.StartPos;
+					hasalt_bp1 = true;
 					if(sv.BP1.StartPos != it->BP2.StartPos)
-						hasalt_bp1 = true;
+						diffalt_bp1 = true;
 				}
 				else if(!sv.BP1.IsLeft && abs(sv.BP1.EndPos - it->BP1.EndPos)<thresh){
 					altsv.BP1.EndPos = it->BP1.EndPos;
+					hasalt_bp1 = true;
 					if(sv.BP1.EndPos != it->BP1.EndPos)
-						hasalt_bp1 = true;
+						diffalt_bp1 = true;
 				}
 			}
 			if(sv.BP2.IsLeft == it->BP2.IsLeft){
 				if(sv.BP2.IsLeft && abs(sv.BP2.StartPos - it->BP2.StartPos)<thresh){
 					altsv.BP2.StartPos = it->BP2.StartPos;
+					hasalt_bp2 = true;
 					if(sv.BP2.StartPos != it->BP2.StartPos)
-						hasalt_bp2 = true;
+						diffalt_bp2 = true;
 				}
 				else if(!sv.BP2.IsLeft && abs(sv.BP2.EndPos - it->BP2.EndPos)<thresh){
 					altsv.BP2.EndPos = it->BP2.EndPos;
+					hasalt_bp2 = true;
 					if(sv.BP2.EndPos != it->BP2.EndPos)
-						hasalt_bp2 = true;
+						diffalt_bp2 = true;
 				}
 			}
-			if(hasalt_bp1 && hasalt_bp2)
+			if(hasalt_bp1 && hasalt_bp2 && (diffalt_bp1 || diffalt_bp2))
 				tmpalternativeSVs.push_back(altsv);
 		}
 		// if there is alternative junction point, then the original junction point must be supported by some spanning reads
@@ -402,7 +411,7 @@ void ReadGenome(string FAfile, vector<string>& Genome, map<string,int>& RefTable
 	input.close();
 };
 
-void WritePreciseJunction(string outfile, vector<SV_t>& SVs, vector<bool>& flags, vector<string>& Genome, vector<string>& RefName)
+void WritePreciseJunction(string outfile, vector<SV_t>& SVs, vector<bool>& flags, vector<string>& Genome, vector<string>& RefName, vector<int>& NumSupports)
 {
 	ofstream output(outfile, ios::out);
 	assert(SVs.size()==flags.size());
@@ -410,6 +419,7 @@ void WritePreciseJunction(string outfile, vector<SV_t>& SVs, vector<bool>& flags
 		if(!flags[i])
 			continue;
 		const SV_t& sv=SVs[i];
+		const int& sup = NumSupports[i];
 		assert(Genome[sv.BP1.Chr].size()>=sv.BP1.EndPos && Genome[sv.BP2.Chr].size()>=sv.BP2.EndPos);
 		string seq1=Genome[sv.BP1.Chr].substr(sv.BP1.StartPos, sv.BP1.EndPos-sv.BP1.StartPos);
 		string seq2=Genome[sv.BP2.Chr].substr(sv.BP2.StartPos, sv.BP2.EndPos-sv.BP2.StartPos);
@@ -419,7 +429,7 @@ void WritePreciseJunction(string outfile, vector<SV_t>& SVs, vector<bool>& flags
 			ReverseComplement(seq2.begin(), seq2.end());
 		string seq=seq1+seq2;
 		output<<">squid_"<<i<<" "<<RefName[sv.BP1.Chr]<<":"<<(sv.BP1.StartPos)<<":"<<(sv.BP1.EndPos)<<":"<<(sv.BP1.IsLeft?"-":"+");
-		output<<" "<<RefName[sv.BP2.Chr]<<":"<<(sv.BP2.StartPos)<<":"<<(sv.BP2.EndPos)<<":"<<(sv.BP2.IsLeft?"+":"-")<<endl;
+		output<<" "<<RefName[sv.BP2.Chr]<<":"<<(sv.BP2.StartPos)<<":"<<(sv.BP2.EndPos)<<":"<<(sv.BP2.IsLeft?"+":"-")<<" "<<sup<<endl;
 		int count=0;
 		while(count<(int)seq.size()){
 			output<<(seq.substr(count, min(80,(int)seq.size()-count)))<<endl;
@@ -465,12 +475,13 @@ void WriteRelaxedJunction(string outfile, vector<SV_t>& SVs, vector<bool>& flags
 	output.close();
 };
 
-void WriteAlternativeJunction(string outfile, vector< vector<SV_t> >& AltSVs, vector<string>& Genome, vector<string>& RefName)
+void WriteAlternativeJunction(string outfile, vector< vector<SV_t> >& AltSVs, vector<string>& Genome, vector<string>& RefName, vector<int>& NumSupports)
 {
 	ofstream output(outfile, ios::out);
 	for(int i=0; i<AltSVs.size(); i++){
 		for(int j=0; j<AltSVs[i].size(); j++){
 			const SV_t& sv=AltSVs[i][j];
+			const int& sup = NumSupports[i];
 			assert(Genome[sv.BP1.Chr].size()>=sv.BP1.EndPos && Genome[sv.BP2.Chr].size()>=sv.BP2.EndPos);
 			string seq1=Genome[sv.BP1.Chr].substr(sv.BP1.StartPos, sv.BP1.EndPos-sv.BP1.StartPos);
 			string seq2=Genome[sv.BP2.Chr].substr(sv.BP2.StartPos, sv.BP2.EndPos-sv.BP2.StartPos);
@@ -481,7 +492,7 @@ void WriteAlternativeJunction(string outfile, vector< vector<SV_t> >& AltSVs, ve
 			string seq=seq1+seq2;
 
 			output<<">squid_"<<i<<"_alt_"<<(j+1)<<" "<<RefName[sv.BP1.Chr]<<":"<<(sv.BP1.StartPos)<<":"<<(sv.BP1.EndPos)<<":"<<(sv.BP1.IsLeft?"-":"+");
-			output<<" "<<RefName[sv.BP2.Chr]<<":"<<(sv.BP2.StartPos)<<":"<<(sv.BP2.EndPos)<<":"<<(sv.BP2.IsLeft?"+":"-")<<endl;
+			output<<" "<<RefName[sv.BP2.Chr]<<":"<<(sv.BP2.StartPos)<<":"<<(sv.BP2.EndPos)<<":"<<(sv.BP2.IsLeft?"+":"-")<<" "<<sup<<endl;
 			int count=0;
 			while(count<(int)seq.size()){
 				output<<(seq.substr(count, min(80,(int)seq.size()-count)))<<endl;
@@ -521,13 +532,26 @@ int main(int argc, char* argv[]){
 
 		vector< vector<SV_t> > ReadSVs;
 		FindReadSupport(Chimrecord, SVs, ReadSVs);
-		vector< pair<int,int> > NumSupports;
+		vector<int> NumSupports;
 		vector< vector<SV_t> > AltSVs;
 		vector<bool> flags=ExactSequence(SVs, ReadSVs, NumSupports, AltSVs);
 
 		vector<string> Genome;
 		ReadGenome(FAfile, Genome, RefTable);
-		WritePreciseJunction(OUTPrefix+"_junc_precise.fa", SVs, flags, Genome, RefName);
+		WritePreciseJunction(OUTPrefix+"_junc_precise.fa", SVs, flags, Genome, RefName, NumSupports);
 		WriteRelaxedJunction(OUTPrefix+"_junc_relax.fa", SVs, flags, Genome, RefName);
+		WriteAlternativeJunction(OUTPrefix+"_junc_alt.fa", AltSVs, Genome, RefName, NumSupports);
+
+		/*vector<string> strs;
+		boost::split(strs, BEDPEfile, boost::is_any_of("/"));
+		string barcode = strs[int(strs.size())-3];
+		for(int i=0; i<SVs.size(); i++){
+			if(!flags[i])
+				continue;
+			const SV_t& sv=SVs[i];
+			const int& sup = NumSupports[i];
+			cout<<barcode<<" squid_"<<i<<" "<<RefName[sv.BP1.Chr]<<":"<<(sv.BP1.StartPos)<<":"<<(sv.BP1.EndPos)<<":"<<(sv.BP1.IsLeft?"-":"+");
+			cout<<" "<<RefName[sv.BP2.Chr]<<":"<<(sv.BP2.StartPos)<<":"<<(sv.BP2.EndPos)<<":"<<(sv.BP2.IsLeft?"+":"-")<<" "<<sup<<endl;
+		}*/
 	}
 }
