@@ -8,7 +8,7 @@ See LICENSE for licensing.
 
 using namespace std;
 
-string SQUIDversion="v1.4";
+string SQUIDversion="v1.5";
 
 // parameter from BAM
 uint16_t ReadLen;
