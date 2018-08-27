@@ -42,9 +42,12 @@ ReadRec_t::ReadRec_t(BamAlignment record){
 	else{
 		SecondTotalLen=TotalLen; FirstTotalLen=0; SecondLowPhred=(LowPhredLen>Max_LowPhred_Len);
 	}
+	int HardClipOffset = 0;
 	for(vector<CigarOp>::const_iterator itcigar=record.CigarData.begin(); itcigar!=record.CigarData.end(); itcigar++){
 		if(itcigar->Type=='S' || itcigar->Type=='H'){
 			ReadPos+=itcigar->Length;
+			if (itcigar->Type=='H')
+				HardClipOffset += itcigar->Length;
 		}
 		else if(itcigar->Type=='M' || itcigar->Type=='='){
 			int tmpRead=0, tmpRef=0;
@@ -58,7 +61,8 @@ ReadRec_t::ReadRec_t(BamAlignment record){
 			// the following line calculate the ratio of poly A and T. If the aligned block is more than 75% A and T, consider it as polyA/T tail, not actual sequence
 			int polyAcount=0;
 			int polyTcount=0;
-			for(int i=ReadPos; i<ReadPos+tmpRead; i++){
+			assert(ReadPos >= HardClipOffset && ReadPos+tmpRead-HardClipOffset <= record.QueryBases.size());
+			for(int i=ReadPos-HardClipOffset; i<ReadPos+tmpRead-HardClipOffset; i++){
 				if(record.QueryBases[i]=='a' || record.QueryBases[i]=='A')
 					polyAcount++;
 				else if(record.QueryBases[i]=='t' || record.QueryBases[i]=='T')
