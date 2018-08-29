@@ -1,3 +1,4 @@
+![SQUID logo](doc/SquidLogo.png)
 # OVERVIEW
 SQUID is designed to detect both fusion-gene and non-fusino-gene transcriptomic structural variations from RNA-seq alignment.
 
@@ -20,7 +21,7 @@ export DYLD_LIBRARY_PATH=<glpk_folder>/lib
 
 # USAGE
 ```
-squid [options] -b <Input_BAM> -o <Output_Prefix>
+squid [options] -b <Input_sorted_BAM> -o <Output_Prefix>
 ```
 SQUID supports the following options:
 
@@ -41,6 +42,8 @@ SQUID supports the following options:
  -CO        |  0            | bool      | Whether or not output ordering of connected components (0 for not outputing, 1 for outputing) 
  -TO        |  0            | bool      | Whether or not output ordering of all segments (0 for not outputing, 1 for outputing) 
  -RG        |  0            | bool      | Whether or not output rearranged genome sequence (0 for not outputing, 1 for outputing) 
+
+Note that SQUID requires that the input BAM file is sorted.
 
 # OUTPUT SPECIFICATION
 + <Output_Prefix>_sv.txt: a list of predicted TSV in bedpe format. This is the main output of SQUID. All positions in the file are 0-based. Each columns represents:
