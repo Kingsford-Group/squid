@@ -104,6 +104,8 @@ Usage:
 ```
 python <squid_folder>/utils/AnnotateSQUIDOutput.py [options] <GTFfile> <SquidPrediction> <OutputFile>
 ```
+Note that the GTF file must have the same chromosome name as in SQUID output, and must contain 3 attributes in the transcript record: transcript ID, gene ID, and gene symbol (or gene name).
+
  Options     | Default value | Data type | Description
  ---         | :---:         | :---:     | ---
  --geneid    |  gene_id      |  string   | GTF gene ID attribute string, the attribute name in GTF record that corresponds to the gene ID
