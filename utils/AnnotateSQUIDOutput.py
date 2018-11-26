@@ -94,14 +94,27 @@ def ReadGTF(gtffile, key_gene_id = "gene_id", key_gene_symbol = "gene_name"):
 			if thistransid == tmptransname and not (tmptranscript is None):
 				tmptranscript.Exons.append((int(strs[3])-1, int(strs[4])))
 			else:
-				extraExons.append([thistransid, int(strs[3])-1, int(strs[4])])
+				tmpgeneid=GetFeature(line, key_gene_id)
+				tmpgenename=GetFeature(line, key_gene_symbol)
+				extraExons.append([thistransid, int(strs[3])-1, int(strs[4]), tmpgeneid, tmpgenename, strs[0], (strs[6]=="+")])
 	if tmptransname!="" and not (tmptranscript is None):
 		Transcripts[tmptransname]=tmptranscript
+	# sort extra exons by transcript id
+	extraExons.sort(key = lambda x:x[0])
 	for e in extraExons:
-		assert(e[0] in Transcripts)
-		Transcripts[e[0]].Exons.append((e[1],e[2]))
+		if e[0] in Transcripts:
+			Transcripts[e[0]].Exons.append((e[1],e[2]))
+		else:
+			if not (tmptranscript is None) and tmptranscript.TransID != e[0]:
+				Transcripts[tmptranscript.TransID] = tmptranscript
+				tmptranscript = Transcript_t(e[0], e[3], e[4], e[5], e[6], e[1], e[2])
+			elif tmptranscript is None:
+				tmptranscript = Transcript_t(e[0], e[3], e[4], e[5], e[6], e[1], e[2])
+			tmptranscript.Exons.append( (e[1],e[2]) )
 	for t in Transcripts:
 		Transcripts[t].Exons.sort(key=lambda x:x[0])
+		Transcripts[t].StartPos = np.min([e[0] for e in Transcripts[t].Exons])
+		Transcripts[t].EndPos = np.max([e[1] for e in Transcripts[t].Exons])
 		if not Transcripts[t].Strand:
 			Transcripts[t].Exons = Transcripts[t].Exons[::-1]
 	fp.close()
