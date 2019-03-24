@@ -65,6 +65,12 @@ public:
 	vector<Node_t> vNodes;
 	vector<Edge_t> vEdges;
 	vector<int> Label;
+
+	// about the filtered edges
+	vector<int> filter_step;
+	vector<Edge_t> filter_edges;
+	vector< vector<string> > filter_readnames;
+
 public:
 	SegmentGraph_t(){};
 	SegmentGraph_t(const vector<int>& RefLength, SBamrecord_t& Chimrecord, string ConcordBamfile);
@@ -77,8 +83,10 @@ public:
 	void BuildNode_STAR(const vector<int>& RefLength, SBamrecord_t& Chimrecord, string ConcordBamfile);
 	void BuildNode_BWA(const vector<int>& RefLength, string bamfile);
 	void BuildEdges(SBamrecord_t& Chimrecord, string ConcordBamfile);
-	void FilterbyWeight();
+	vector<Edge_t> FilterbyWeight();
 	void FilterbyInterleaving(vector<bool>& KeepEdge);
+	void ProcessFilter_step_edge();
+	void ProcessFilter_readnames(SBamrecord_t& Chimrecord);
 
 	vector<int> LocateRead(int initialguess, ReadRec_t& ReadRec);
 	vector<int> LocateRead(vector<int>& singleRead_Node, ReadRec_t& ReadRec);
@@ -87,7 +95,7 @@ public:
 	void RawEdgesOther(SBamrecord_t& Chimrecord, string ConcordBamfile);
 	void RawEdges(SBamrecord_t& Chimrecord, string bamfile);
 	
-	void FilterEdges(const vector<bool>& KeepEdge);
+	vector<Edge_t> FilterEdges(const vector<bool>& KeepEdge);
 	void UpdateNodeLink();
 	void CompressNode();
 	void CompressNode(vector< vector<int> >& Read_Node);
@@ -103,6 +111,7 @@ public:
 	void ExactBreakpoint(SBamrecord_t& Chimrecord, map<Edge_t, vector< pair<int,int> > >& ExactBP);
 	void ExactBPConcordantSupport(string Input_BAM, SBamrecord_t& Chimrecord, const map<Edge_t, vector< pair<int,int> > >& ExactBP, map<Edge_t, vector< pair<int,int> > >& ExactBP_concord_support);
 	void OutputGraph(string outputfile);
+	void OutputFilteredEdgeSupport(string outputfile);
 
 	vector< vector<int> > Ordering();
 	vector<int> MincutRecursion(std::map<int,int> CompNodes, vector<Edge_t> CompEdges);

@@ -86,20 +86,181 @@ SegmentGraph_t::SegmentGraph_t(const vector<int>& RefLength, SBamrecord_t& Chimr
 	else
 		BuildNode_BWA(RefLength, bamfile);
 	BuildEdges(Chimrecord, bamfile);
-	// TmpWriteBEDPE("tmpedges2_before_filterbyweight.txt", *this, RefName);
-	FilterbyWeight();
-	// TmpWriteBEDPE("tmpedges2_before_filterbyinterleave.txt", *this, RefName);
+	
+	// CompressNode();
+	// FurtherCompressNode();
+	// ConnectedComponent();
+	// MultiplyDisEdges();
+	// cout<<vNodes.size()<<'\t'<<vEdges.size()<<endl;
+};
+
+void SegmentGraph_t::ProcessFilter_step_edge()
+{
+	// clear filter edge variables
+	filter_step.clear();
+	filter_edges.clear();
+
+	// step 1: filter by group weight
+	vector<Edge_t> deleted_edges_step1 = FilterbyWeight();
+	// assert about uniqueness of the edges
+	vector<Edge_t> unique_deleted_edges_step1(deleted_edges_step1.begin(), deleted_edges_step1.end());
+	sort(unique_deleted_edges_step1.begin(), unique_deleted_edges_step1.end());
+	unique_deleted_edges_step1.resize( distance(unique_deleted_edges_step1.begin(), unique(unique_deleted_edges_step1.begin(), unique_deleted_edges_step1.end())) );
+	assert(deleted_edges_step1.size() == unique_deleted_edges_step1.size());
+	// add to filter
+	filter_step.assign(deleted_edges_step1.size(), 1);
+	filter_edges.insert(filter_edges.end(), deleted_edges_step1.begin(), deleted_edges_step1.end());
+
+	// step 2: filter by interleaving
+	vector<Edge_t> deleted_edges_step2;
 	vector<bool> KeepEdge;
 	FilterbyInterleaving(KeepEdge);
-	// TmpWriteBEDPE("tmpedges2_before_filteredges.txt", *this, RefName);
-	FilterEdges(KeepEdge);
-	// TmpWriteBEDPE("tmpedges2_before_compressnode.txt", *this, RefName);
-	CompressNode();
-	FurtherCompressNode();
-	// TmpWriteBEDPE("tmpedges2_before_almostdone.txt", *this, RefName);
-	ConnectedComponent();
-	MultiplyDisEdges();
-	cout<<vNodes.size()<<'\t'<<vEdges.size()<<endl;
+	for (int i = 0; i < KeepEdge.size(); i++) {
+		if (!KeepEdge[i])
+			deleted_edges_step2.push_back(vEdges[i]);
+	}
+	// assert about the uniqueness of both steps of edges
+	vector<Edge_t> unique_deleted_edges_step2(deleted_edges_step1.begin(), deleted_edges_step1.end());
+	unique_deleted_edges_step2.insert(unique_deleted_edges_step2.end(), deleted_edges_step2.begin(), deleted_edges_step2.end());
+	sort(unique_deleted_edges_step2.begin(), unique_deleted_edges_step2.end());
+	unique_deleted_edges_step2.resize( distance(unique_deleted_edges_step2.begin(), unique(unique_deleted_edges_step2.begin(), unique_deleted_edges_step2.end())) );
+	assert(unique_deleted_edges_step2.size() == deleted_edges_step1.size() + deleted_edges_step2.size());
+	// add to filter
+	for (int i = 0; i < deleted_edges_step2.size(); i++) {
+		filter_step.push_back(2);
+		filter_edges.push_back(deleted_edges_step2[i]);
+	}
+
+	// step 3: 
+	vector<Edge_t> deleted_edges_step3 = FilterEdges(KeepEdge);
+	// assert about the uniqueness of both steps of edges
+	vector<Edge_t> unique_deleted_edges_step3(deleted_edges_step1.begin(), deleted_edges_step1.end());
+	unique_deleted_edges_step3.insert(unique_deleted_edges_step3.end(), deleted_edges_step2.begin(), deleted_edges_step2.end());
+	unique_deleted_edges_step3.insert(unique_deleted_edges_step3.end(), deleted_edges_step3.begin(), deleted_edges_step3.end());
+	sort(unique_deleted_edges_step3.begin(), unique_deleted_edges_step3.end());
+	unique_deleted_edges_step3.resize( distance(unique_deleted_edges_step3.begin(), unique(unique_deleted_edges_step3.begin(), unique_deleted_edges_step3.end())) );
+	assert(unique_deleted_edges_step3.size() == deleted_edges_step1.size() + deleted_edges_step2.size() + deleted_edges_step3.size());
+	// add to filter
+	for (int i = 0; i < deleted_edges_step3.size(); i++) {
+		filter_step.push_back(3);
+		filter_edges.push_back(deleted_edges_step3[i]);
+	}
+};
+
+void SegmentGraph_t::ProcessFilter_readnames(SBamrecord_t& Chimrecord)
+{
+	// clear variable
+	filter_readnames.clear();
+
+	// intermediate result vector: pair<filtered edge index, read name>
+	vector< pair<int,string> > mid_result;
+
+	// map the filtered edges to the index in the vector
+	map<Edge_t,int> map_edge_index;
+	for (int i = 0; i < filter_edges.size(); i++)
+		map_edge_index[filter_edges[i]] = i;
+
+	// loop over the reads to construct the edges
+	int firstfrontindex=0, i=0, j=0, splittedcount=0;
+	clock_t starttime=clock();
+	for(vector<ReadRec_t>::iterator it=Chimrecord.begin(); it!=Chimrecord.end(); it++){
+		if(it->FirstRead.size()==0 && it->SecondMate.size()==0)
+			continue;
+		vector<int> tmpRead_Node=LocateRead(firstfrontindex, *it);
+		if(tmpRead_Node[0]!=-1)
+			firstfrontindex=tmpRead_Node[0];
+		// edges from FirstRead segments
+		if(it->FirstRead.size()>0){
+			for(int k=0; k<it->FirstRead.size()-1; k++){
+				i=tmpRead_Node[k]; j=tmpRead_Node[k+1];
+				if(i!=j && i!=-1 && j!=-1){
+					bool tmpHead1=(it->FirstRead[k].IsReverse)?true:false, tmpHead2=(it->FirstRead[k+1].IsReverse)?false:true;
+					Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
+					assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
+					if(IsDiscordant(tmp)) {
+						// check whether the edge is the within the filtered ones
+						map<Edge_t,int>::const_iterator itmap = map_edge_index.find(tmp);
+						if (itmap != map_edge_index.cend())
+							mid_result.push_back( make_pair(itmap->second, it->Qname) );
+					}
+				}
+			}
+		}
+		// edges from SecondMate segments
+		if(it->SecondMate.size()>0){
+			for(int k=0; k<it->SecondMate.size()-1; k++){
+				i=tmpRead_Node[(int)it->FirstRead.size()+k]; j=tmpRead_Node[(int)it->FirstRead.size()+k+1];
+				if(i!=j && i!=-1 && j!=-1){
+					bool tmpHead1=(it->SecondMate[k].IsReverse)?true:false, tmpHead2=(it->SecondMate[k+1].IsReverse)?false:true;
+					Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
+					assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
+					if(IsDiscordant(tmp)) {
+						// check whether the edge is the within the filtered ones
+						map<Edge_t,int>::const_iterator itmap = map_edge_index.find(tmp);
+						if (itmap != map_edge_index.cend())
+							mid_result.push_back( make_pair(itmap->second, it->Qname) );
+					}
+				}
+			}
+		}
+		// edges from pair ends
+		if(it->FirstRead.size()>0 && it->SecondMate.size()>0){
+			if(!it->IsSingleAnchored() && !it->IsEndDiscordant(true) && !it->IsEndDiscordant(false)){
+				i=tmpRead_Node[(int)it->FirstRead.size()-1]; j=tmpRead_Node.back();
+				bool isoverlap=false;
+				for(int k=0; k<it->FirstRead.size(); k++)
+					if(j==tmpRead_Node[k])
+						isoverlap=true;
+				for(int k=0; k<it->SecondMate.size(); k++)
+					if(i==tmpRead_Node[(int)it->FirstRead.size()+k])
+						isoverlap=true;
+				if(it->FirstRead.size()>1){
+					if(it->IsEndDiscordant(true) && ((tmpRead_Node.front()<=j && tmpRead_Node[(int)it->FirstRead.size()-1]>=j) || (tmpRead_Node.front()>=j && tmpRead_Node[(int)it->FirstRead.size()-1]<=j)))
+						isoverlap=true;
+					else if(!it->IsEndDiscordant(true) && abs(i-j)<3)
+						isoverlap=true;
+				}
+				if(it->SecondMate.size()>1){
+					if(it->IsEndDiscordant(false) && ((tmpRead_Node[(int)it->FirstRead.size()]<=i && tmpRead_Node.back()>=i) || (tmpRead_Node[(int)it->FirstRead.size()]>=i && tmpRead_Node.back()<=i)))
+						isoverlap=true;
+					else if(!it->IsEndDiscordant(false) && abs(i-j)<3)
+						isoverlap=true;
+				}
+				if(i!=j && i!=-1 && j!=-1 && !isoverlap){
+					bool tmpHead1=(it->FirstRead.back().IsReverse)?true:false, tmpHead2=(it->SecondMate.back().IsReverse)?true:false;
+					Edge_t tmp(i, tmpHead1, j, tmpHead2, 1);
+					assert(tmp.Ind1>=0 && tmp.Ind1<(int)vNodes.size() && tmp.Ind2>=0 && tmp.Ind2<(int)vNodes.size());
+					if(IsDiscordant(tmp)) {
+						// check whether the edge is the within the filtered ones
+						map<Edge_t,int>::const_iterator itmap = map_edge_index.find(tmp);
+						if (itmap != map_edge_index.cend())
+							mid_result.push_back( make_pair(itmap->second, it->Qname) );
+					}
+				}
+			}
+		}
+	}
+
+	// sort mid_result and take the unique
+	sort(mid_result.begin(), mid_result.end(), 
+		[](pair<int,string> a, pair<int,string> b){if (a.first != b.first) return a.first < b.first; else return a.second < b.second;} );
+	vector< pair<int,string> > unique_mid_result;
+	for (int i = 0; i < mid_result.size(); i++) {
+		if (unique_mid_result.size() == 0 || unique_mid_result.back().first != mid_result[i].first || unique_mid_result.back().second != mid_result[i].second)
+			unique_mid_result.push_back(mid_result[i]);
+	}
+	// re-organize into the vector of vector format of filter_readnames
+	int s = 0;
+	int t = s;
+	while (s < unique_mid_result.size()) {
+		// assert that the previous filtered edges all have readnames support
+		assert(filter_readnames.size() == unique_mid_result[s].first);
+		vector<string> readnames;
+		for (t = s; t < unique_mid_result.size() && unique_mid_result[t].first == unique_mid_result[s].first; t++)
+			readnames.push_back(unique_mid_result[t].second);
+		readnames.reserve(readnames.size());
+		filter_readnames.push_back(readnames);
+	}
 };
 
 SegmentGraph_t::SegmentGraph_t(string graphfile){
@@ -1917,7 +2078,7 @@ void SegmentGraph_t::BuildEdges(SBamrecord_t& Chimrecord, string bamfile){
 	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Finish building edges."<<endl;
 };
 
-void SegmentGraph_t::FilterbyWeight(){
+vector<Edge_t> SegmentGraph_t::FilterbyWeight(){
 	int relaxedweight=Min_Edge_Weight-2;
 	vector<bool> HasInspected(vEdges.size(), false);
 	for(int i=0; i<vEdges.size(); i++){
@@ -2064,14 +2225,20 @@ void SegmentGraph_t::FilterbyWeight(){
 	}
 
 	// filter groupweight by relaxesweight threshold
+	vector<Edge_t> deletedEdges;
 	vector<Edge_t> tmpEdges;
 	tmpEdges.reserve(vEdges.size());
-	for(int i=0; i<vEdges.size(); i++)
+	for(int i=0; i<vEdges.size(); i++) {
 		if(vEdges[i].GroupWeight > relaxedweight)
 			tmpEdges.push_back(vEdges[i]);
+		else
+			deletedEdges.push_back(vEdges[i]);
+	}
 	tmpEdges.reserve(tmpEdges.size());
 	vEdges=tmpEdges;
 	UpdateNodeLink();
+
+	return deletedEdges;
 };
 
 /*void SegmentGraph_t::FilterbyWeight(){
@@ -2214,7 +2381,7 @@ void SegmentGraph_t::FilterbyInterleaving(vector<bool>& KeepEdge){
 		// for Ind1 group, if head connections and tail connections overlap, then Ind1 group is in the middle of Ind2 group
 		// if both Ind1 and Ind2 group head and tail overlap, then Ind1 is in the middle of Ind2, Ind2 is in the middle of Ind1, which means interleaving
 		bool overlapInd1=false;
-		if(Ind1GroupHead.size()>0 && Ind1GroupTail.size()>0);
+		if(Ind1GroupHead.size()>0 && Ind1GroupTail.size()>0)
 			overlapInd1=(min(RangeInd1Head.second,RangeInd1Tail.second) >= max(RangeInd1Head.first,RangeInd1Tail.first));
 		bool overlapInd2=false;
 		if(Ind2GroupHead.size()>0 && Ind2GroupTail.size()>0)
@@ -2408,7 +2575,7 @@ void SegmentGraph_t::GroupSelect(int node, vector<Edge_t*>& Edges, int sumweight
 		}
 };
 
-void SegmentGraph_t::FilterEdges(const vector<bool>& KeepEdge){
+vector<Edge_t> SegmentGraph_t::FilterEdges(const vector<bool>& KeepEdge){
 	vector<int> BadNodes;
 	vector<Edge_t> ToDelete;
 	for(int i=0; i<vNodes.size(); i++){
@@ -2451,7 +2618,6 @@ void SegmentGraph_t::FilterEdges(const vector<bool>& KeepEdge){
 						ToDelete.push_back(*(*it));
 		}
 	}
-	sort(ToDelete.begin(), ToDelete.end());
 	sort(BadNodes.begin(), BadNodes.end());
 	vector<Edge_t> tmpEdges; tmpEdges.reserve(vEdges.size());
 	for(int i=0; i<vEdges.size(); i++){
@@ -2469,12 +2635,19 @@ void SegmentGraph_t::FilterEdges(const vector<bool>& KeepEdge){
 		}
 		if(KeepEdge[i] && cond1 && cond2)
 			tmpEdges.push_back(vEdges[i]);
+		else if (KeepEdge[i] && (!cond1 || !cond2))
+			ToDelete.push_back(vEdges[i]);
 	}
+	// sort and unique the ToDelete
+	sort(ToDelete.begin(), ToDelete.end());
+	ToDelete.resize( distance(ToDelete.begin(), unique(ToDelete.begin(), ToDelete.end())) );
 	tmpEdges.reserve(tmpEdges.size());
 	sort(tmpEdges.begin(), tmpEdges.end());
 	vector<Edge_t>::iterator it=set_difference(tmpEdges.begin(), tmpEdges.end(), ToDelete.begin(), ToDelete.end(), vEdges.begin());
 	vEdges.resize(distance(vEdges.begin(), it));
 	UpdateNodeLink();
+
+	return ToDelete;
 };
 
 void SegmentGraph_t::CompressNode(){
@@ -3182,6 +3355,28 @@ void SegmentGraph_t::OutputGraph(string outputfile){
 	for(int i=0; i<vEdges.size(); i++){
 		output<<"edge\t"<<i<<'\t'<<vEdges[i].Ind1<<'\t'<<(vEdges[i].Head1?"H\t":"T\t")<<vEdges[i].Ind2<<'\t'<<(vEdges[i].Head2?"H\t":"T\t")<<vEdges[i].Weight<<endl;
 	}
+	output.close();
+};
+
+void SegmentGraph_t::OutputFilteredEdgeSupport(string outputfile)
+{
+	// size assertions
+	assert(filter_step.size() == filter_edges.size());
+	assert(filter_edges.size() == filter_readnames.size());
+	// write to file
+	ofstream output(outputfile, ios::out);
+	output << "# node1\thead1\tnode2\thead2\tstep\treadnames\n";
+	for (int i = 0; i < filter_step.size(); i++) {
+		const Edge_t& e = filter_edges[i];
+		const vector<string>& readnames = filter_readnames[i];
+		output << e.Ind1 <<"\t"<< (e.Head1 ? "H":"T") <<"\t"<< e.Ind2 <<"\t"<< (e.Head2 ? "H":"T") <<"\t"<< filter_step[i] <<"\t";
+		string s_name = "";
+		for (const string& s : readnames)
+			s_name += s + ",";
+		s_name = s_name.substr(s_name.size() - 1);
+		output << s_name << "\n";
+	}
+	// close file
 	output.close();
 };
 
