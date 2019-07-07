@@ -86,6 +86,9 @@ SegmentGraph_t::SegmentGraph_t(const vector<int>& RefLength, SBamrecord_t& Chimr
 	else
 		BuildNode_BWA(RefLength, bamfile);
 	BuildEdges(Chimrecord, bamfile);
+
+	// TO BE DELETED: also initialize Label here
+	Label.assign(vNodes.size(), 0);
 	
 	// CompressNode();
 	// FurtherCompressNode();
@@ -102,14 +105,14 @@ void SegmentGraph_t::ProcessFilter_step_edge()
 
 	// step 1: filter by group weight
 	vector<Edge_t> deleted_edges_step1 = FilterbyWeight();
+	sort(deleted_edges_step1.begin(), deleted_edges_step1.end());
 	// assert about uniqueness of the edges
 	vector<Edge_t> unique_deleted_edges_step1(deleted_edges_step1.begin(), deleted_edges_step1.end());
-	sort(unique_deleted_edges_step1.begin(), unique_deleted_edges_step1.end());
 	unique_deleted_edges_step1.resize( distance(unique_deleted_edges_step1.begin(), unique(unique_deleted_edges_step1.begin(), unique_deleted_edges_step1.end())) );
 	assert(deleted_edges_step1.size() == unique_deleted_edges_step1.size());
 	// add to filter
 	filter_step.assign(deleted_edges_step1.size(), 1);
-	filter_edges.insert(filter_edges.end(), deleted_edges_step1.begin(), deleted_edges_step1.end());
+	filter_edges.insert(filter_edges.end(), unique_deleted_edges_step1.begin(), unique_deleted_edges_step1.end());
 
 	// step 2: filter by interleaving
 	vector<Edge_t> deleted_edges_step2;
@@ -119,31 +122,37 @@ void SegmentGraph_t::ProcessFilter_step_edge()
 		if (!KeepEdge[i])
 			deleted_edges_step2.push_back(vEdges[i]);
 	}
+	sort(deleted_edges_step2.begin(), deleted_edges_step2.end());
 	// assert about the uniqueness of both steps of edges
-	vector<Edge_t> unique_deleted_edges_step2(deleted_edges_step1.begin(), deleted_edges_step1.end());
-	unique_deleted_edges_step2.insert(unique_deleted_edges_step2.end(), deleted_edges_step2.begin(), deleted_edges_step2.end());
+	vector<Edge_t> unique_deleted_edges_step2;
+	std::set_difference(deleted_edges_step2.begin(), deleted_edges_step2.end(), deleted_edges_step1.begin(), deleted_edges_step1.end(), 
+		std::inserter(unique_deleted_edges_step2, unique_deleted_edges_step2.begin()));
 	sort(unique_deleted_edges_step2.begin(), unique_deleted_edges_step2.end());
 	unique_deleted_edges_step2.resize( distance(unique_deleted_edges_step2.begin(), unique(unique_deleted_edges_step2.begin(), unique_deleted_edges_step2.end())) );
-	assert(unique_deleted_edges_step2.size() == deleted_edges_step1.size() + deleted_edges_step2.size());
+	// assert(unique_deleted_edges_step2.size() == deleted_edges_step1.size() + deleted_edges_step2.size());
 	// add to filter
-	for (int i = 0; i < deleted_edges_step2.size(); i++) {
+	for (int i = 0; i < unique_deleted_edges_step2.size(); i++) {
 		filter_step.push_back(2);
-		filter_edges.push_back(deleted_edges_step2[i]);
+		filter_edges.push_back(unique_deleted_edges_step2[i]);
 	}
 
 	// step 3: 
 	vector<Edge_t> deleted_edges_step3 = FilterEdges(KeepEdge);
+	sort(deleted_edges_step3.begin(), deleted_edges_step3.end());
 	// assert about the uniqueness of both steps of edges
-	vector<Edge_t> unique_deleted_edges_step3(deleted_edges_step1.begin(), deleted_edges_step1.end());
-	unique_deleted_edges_step3.insert(unique_deleted_edges_step3.end(), deleted_edges_step2.begin(), deleted_edges_step2.end());
-	unique_deleted_edges_step3.insert(unique_deleted_edges_step3.end(), deleted_edges_step3.begin(), deleted_edges_step3.end());
+	vector<Edge_t> tmp;
+	vector<Edge_t> unique_deleted_edges_step3;
+	std::set_difference(deleted_edges_step3.begin(), deleted_edges_step3.end(), deleted_edges_step1.begin(), deleted_edges_step1.end(), 
+		std::inserter(tmp, tmp.begin()));
+	std::set_difference(tmp.begin(), tmp.end(), deleted_edges_step2.begin(), deleted_edges_step2.end(), 
+		std::inserter(unique_deleted_edges_step3, unique_deleted_edges_step3.begin()));
 	sort(unique_deleted_edges_step3.begin(), unique_deleted_edges_step3.end());
 	unique_deleted_edges_step3.resize( distance(unique_deleted_edges_step3.begin(), unique(unique_deleted_edges_step3.begin(), unique_deleted_edges_step3.end())) );
-	assert(unique_deleted_edges_step3.size() == deleted_edges_step1.size() + deleted_edges_step2.size() + deleted_edges_step3.size());
+	// assert(unique_deleted_edges_step3.size() == deleted_edges_step1.size() + deleted_edges_step2.size() + deleted_edges_step3.size());
 	// add to filter
-	for (int i = 0; i < deleted_edges_step3.size(); i++) {
+	for (int i = 0; i < unique_deleted_edges_step3.size(); i++) {
 		filter_step.push_back(3);
-		filter_edges.push_back(deleted_edges_step3[i]);
+		filter_edges.push_back(unique_deleted_edges_step3[i]);
 	}
 };
 
@@ -151,6 +160,10 @@ void SegmentGraph_t::ProcessFilter_readnames(SBamrecord_t& Chimrecord)
 {
 	// clear variable
 	filter_readnames.clear();
+	for (int i = 0; i < filter_step.size(); i++) {
+		vector<string> readnames;
+		filter_readnames.push_back(readnames);
+	}
 
 	// intermediate result vector: pair<filtered edge index, read name>
 	vector< pair<int,string> > mid_result;
@@ -254,12 +267,12 @@ void SegmentGraph_t::ProcessFilter_readnames(SBamrecord_t& Chimrecord)
 	int t = s;
 	while (s < unique_mid_result.size()) {
 		// assert that the previous filtered edges all have readnames support
-		assert(filter_readnames.size() == unique_mid_result[s].first);
 		vector<string> readnames;
 		for (t = s; t < unique_mid_result.size() && unique_mid_result[t].first == unique_mid_result[s].first; t++)
 			readnames.push_back(unique_mid_result[t].second);
 		readnames.reserve(readnames.size());
-		filter_readnames.push_back(readnames);
+		filter_readnames[unique_mid_result[s].first] = readnames;
+		s = t;
 	}
 };
 
@@ -3373,7 +3386,8 @@ void SegmentGraph_t::OutputFilteredEdgeSupport(string outputfile)
 		string s_name = "";
 		for (const string& s : readnames)
 			s_name += s + ",";
-		s_name = s_name.substr(s_name.size() - 1);
+		if (readnames.size() == 0)
+			s_name = ",";
 		output << s_name << "\n";
 	}
 	// close file
