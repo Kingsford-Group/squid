@@ -62,7 +62,7 @@ Note that SQUID requires that the input BAM file is sorted.
 	example record:
 	> 17  38135881  38136308  17  38137195  38137773  .  685  +  +  106  221
 	>
-	This means the right end (position 38136308) of segment 38135881-38137195 on chr17 is connected to the right end (position 38137773) of segment 38137195-38137773 also on chr17. The number of supporting reads for this TSV is 685. There are 106 concordant paired-end reads covering the first breakpoint (chr17 38136308), and 221 concordant paired-end reads covering the second breakpoint (chr17 38137773).
+	This means the right end (position 38136308) of segment 38135881-38136308 on chr17 is connected to the right end (position 38137773) of segment 38137195-38137773 also on chr17. The number of supporting reads for this TSV is 685. There are 106 concordant paired-end reads covering the first breakpoint (chr17 38136308), and 221 concordant paired-end reads covering the second breakpoint (chr17 38137773).
 	> 5  176370330  176370489  8  128043988  128044089  .  328  -  +  588  1029
 	>
 	This means the left end (position 176370330) of segment 176370330-176370489 on chr5 is connected with the right end (position 128044089) of segment 128043988-128044089 on chr8. There are 588 concordant reads covering the first breakpoint (chr5 176370330), and 1029 concordant reads covering the second breakpoint (chr8 128044089).
