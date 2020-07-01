@@ -251,8 +251,11 @@ void SegmentGraph_t::BuildNode_STAR(const vector<int>& RefLength, SBamrecord_t& 
 	vector< pair<int,int> >::iterator itpartstart=PartAlignPos.begin();
 	vector< pair<int,int> >::iterator itpartend=PartAlignPos.begin();
 	vector< pair<int,int> >::iterator itpartcurrent;
+	// ReadsMain and ReadsOther are only used to compute the read depth in each segment. They are NOT used in actual segmentation step.
 	vector< pair<int, pair<int,int> > > ReadsMain; ReadsMain.reserve(65536);
 	vector< pair<int, pair<int,int> > > ReadsOther; ReadsOther.reserve(65536);
+	// ConcordantCluster and PartialAlignCluster are used to store concordant read alignment that are purely concordant (ConcordantCluster) or posibly supporting TSV (PartialAlignCluster, unaligned part may from TSV)
+	// They are used in segmentation to decide which position has too many concordant spanning reads and shouldn't be segmented.
 	vector<SingleBamRec_t> ConcordRest;
 	make_heap(ConcordRest.begin(), ConcordRest.end(), MinHeapComp);
 	vector<SingleBamRec_t> ConcordantCluster; ConcordantCluster.reserve(65536);
@@ -263,6 +266,8 @@ void SegmentGraph_t::BuildNode_STAR(const vector<int>& RefLength, SBamrecord_t& 
 	int disChr=0, otherChr=0, nextdisChr=0;
 	int disrightmost=0, otherrightmost=0, nextdisrightmost=0;
 	int markedNodeStart=-1, markedNodeChr=-1;
+	// read the SORTED concordant BAM file, and store a group of concordant alignment in ReadsMain and ReadsOther. 
+	// Everytime finishing collecting all concordant reads that cover a discordant-read-spanning region, compare the concordant and discordant reads in the region to segment.
 	ReadRec_t lastreadrec;
 	BamReader bamreader; bamreader.Open(bamfile);
 	if(bamreader.IsOpen()){
@@ -311,6 +316,7 @@ void SegmentGraph_t::BuildNode_STAR(const vector<int>& RefLength, SBamrecord_t& 
 				ReadsOther.reserve(ReadsOther.size()*2);
 			if(itdisstart==bamdiscordant.cend())
 				break;
+			// itdisstart and itdisend specifies the discordant-read-spanning region. The group of discordant alignments are far away from other discordant reads by ReadLen distance.
 			if(distance(itdisstart, itdisend)<=0){
 				disrightmost=nextdisrightmost; disChr=nextdisChr;
 				nextdisrightmost=itdisstart->RefPos+itdisstart->MatchRef;
@@ -320,13 +326,21 @@ void SegmentGraph_t::BuildNode_STAR(const vector<int>& RefLength, SBamrecord_t& 
 				}
 			}
 
+			// when the current read from concordant BAM steps over the discordant region, start segmenting the genomic region.
+			// Segmentation rule: (1) prioritize positions where multiple discordant split-read alignment breaks, if not many concordant read spanning that position. Make a segment that starts/ends at those clear breakpoint positions.
+			//                    (2) when there is no clear split-read breakpoints that outnumber concordant coverage by a lot but the discordant read density is high, we will set the whole discordant read group region as a segment.
 			while(itdisstart!=bamdiscordant.cend() && (itdisstart->RefID<record.RefID || (itdisstart->RefID==record.RefID && nextdisrightmost<record.Position))){
+				// curEndPos and curStartPos indicates the actual start position of segment.
 				int curEndPos=0, curStartPos=0;
+				// disStartPos and disEndPos indicates the region of overlapping discordant alignments (strictly overlapping instead of applying ReadLen distance threshold, as I can remember)
 				int disStartPos=-1, disEndPos=-1, disCount=-1;
 				bool isClusternSplit=false;
+				// markedNodeStart and markedNodeChr are used to extend a previously constructed segment to a 0-coverage position to reduce the number of breaks within concordant reads.
 				if(markedNodeStart!=-1 && itdisstart->RefID!=markedNodeChr){
 					markedNodeChr=-1; markedNodeStart=-1;
 				}
+
+				// move the offset of the vector of ConcordantCluster and PartialAlignCluster to skip the previous concordant reads that are not relevant to this region
 				while(ConcordantCluster.size()!=offsetConcordantCluster && ConcordantCluster[offsetConcordantCluster].RefID<itdisstart->RefID)
 					offsetConcordantCluster++;
 				while(PartialAlignCluster.size()!=offsetPartialAlignCluster && PartialAlignCluster[offsetPartialAlignCluster].RefID<itdisstart->RefID)
@@ -335,6 +349,8 @@ void SegmentGraph_t::BuildNode_STAR(const vector<int>& RefLength, SBamrecord_t& 
 					offsetConcordantCluster=ConcordantCluster.size();
 				if(PartialAlignCluster.size()!=offsetPartialAlignCluster && itdisstart->RefPos>PartialAlignCluster.back().RefPos+PartialAlignCluster.back().MatchRef+ReadLen)
 					offsetPartialAlignCluster=PartialAlignCluster.size();
+				// curStartPos is the left-most one among the 2 options: the left-most discordant read alignment start position, the left-most relevant concordant read alignment start position
+				// but if it is to the left of previous segment end position (markedNodeStart), use the previous segment end position as the start of next segment to be constructed.
 				curStartPos=itdisstart->RefPos;
 				SingleBamRec_t ittmp;
 				if(ConcordantCluster.size()!=offsetConcordantCluster && PartialAlignCluster.size()!=offsetPartialAlignCluster)
@@ -351,6 +367,7 @@ void SegmentGraph_t::BuildNode_STAR(const vector<int>& RefLength, SBamrecord_t& 
 					pop_heap(ConcordRest.begin(), ConcordRest.end(), MinHeapComp); ConcordRest.pop_back();
 				}
 
+				// move the iterator of discordant read PartAlignPos vector to skip the previous regions
 				for(; itpartstart!=PartAlignPos.end() && (itpartstart->first<itdisstart->RefID || (itpartstart->first==itdisstart->RefID && itpartstart->second+ReadLen<itdisstart->RefPos)); itpartstart++){}
 				for(itpartend=itpartstart; itpartend!=PartAlignPos.end() && itpartend->first==itdisstart->RefID && itpartend->second<nextdisrightmost+ReadLen; itpartend++){}
 
@@ -358,6 +375,7 @@ void SegmentGraph_t::BuildNode_STAR(const vector<int>& RefLength, SBamrecord_t& 
 					if(itdisstart!=bamdiscordant.cbegin() && itdisstart->RefID!=(itdisstart-1)->RefID && ConcordantCluster.size()==offsetConcordantCluster && PartialAlignCluster.size()==offsetPartialAlignCluster)
 						curStartPos=itdisstart->RefPos;
 					isClusternSplit=false;
+					// collect all potential breakpoint positions from the overlapping discordant read alignments (strict overlapping this time insteading of applying ReadLen distance threshold) and store in MarginPositions
 					vector<int> MarginPositions;
 					for(itdiscurrent=itdisstart; itdiscurrent!=itdisend; itdiscurrent++){
 						MarginPositions.push_back(itdiscurrent->RefPos); MarginPositions.push_back(itdiscurrent->RefPos+itdiscurrent->MatchRef);
@@ -394,6 +412,9 @@ void SegmentGraph_t::BuildNode_STAR(const vector<int>& RefLength, SBamrecord_t& 
 						}
 					}
 					sort(MarginPositions.begin(), MarginPositions.end());
+					// loop over the potential breakpoints and find the ones that satisfy the concordant/discordant criteria as candidates.
+					// the following 4 position variables has the relationship of curStartPos <= itdisstart <= lastCurser (previous breakpoint that satisfy the criteria with the largest supports) <= itbreak (current potential breakpoint being investigates)
+					// A caveat is that multiple potential breakpoints may satisfy the criteria, and if they are near each other by a distance of thresh * 20, the top supported one will be selected become segment end point.
 					int lastCurser=-1, lastSupport=0;
 					for(vector<int>::iterator itbreak=MarginPositions.begin(); itbreak!=MarginPositions.end(); itbreak++){
 						if(vNodes.size()!=0 && vNodes.back().Chr==itdisstart->RefID && (*itbreak)-vNodes.back().Position-vNodes.back().Length<thresh*20)
@@ -472,6 +493,7 @@ void SegmentGraph_t::BuildNode_STAR(const vector<int>& RefLength, SBamrecord_t& 
 						curStartPos=lastCurser; curEndPos=lastCurser;
 						markedNodeStart=lastCurser; markedNodeChr=tmp.Chr;
 					}
+					// If none of the above potential breakpoints satify the concordant/discordant criteria but the density of discordant read is high, set the whole discordant-read-spanning region as a segment
 					if(disStartPos!=-1 && !isClusternSplit && disCount>min(5.0, 4.0*(disEndPos-disStartPos)/ReadLen)){
 						if(vNodes.size()!=0 && vNodes.back().Chr==(itdisend-1)->RefID && disEndPos-vNodes.back().Position-vNodes.back().Length<thresh*20)
 							vNodes.back().Length+=disEndPos-vNodes.back().Position-vNodes.back().Length;
@@ -489,6 +511,7 @@ void SegmentGraph_t::BuildNode_STAR(const vector<int>& RefLength, SBamrecord_t& 
 						offsetPartialAlignCluster++;
 					for(itdiscurrent=itdisstart; itdiscurrent!=itdisend && itdiscurrent->RefPos+itdiscurrent->MatchRef<=curEndPos; itdiscurrent++){}
 					// move offsetConcordantCluster right after the end of last inserted node
+					// find the position with 0 coverage at the same time (concord0pos). Starting from the end point of last inserted segment, if there are overlapping concordant reads or partially aligned reads, move concord0pos to the right-most position of the concordant/partially aligned read.
 					int concord0pos=curStartPos;
 					do{
 						bool flag1=false, flag2=false;
@@ -522,6 +545,7 @@ void SegmentGraph_t::BuildNode_STAR(const vector<int>& RefLength, SBamrecord_t& 
 							break;
 					} while(ConcordantCluster.size()!=offsetConcordantCluster || PartialAlignCluster.size()!=offsetPartialAlignCluster);
 					// extend last inserted node to concordant
+					// keep finding 0-coverage position by moving concord0pos to the right-most positions of concordant/partially aligned reads
 					do{
 						if(markedNodeStart!=-1 && (record.RefID>markedNodeChr || record.Position>concord0pos+ReadLen) && (ConcordantCluster.size()==offsetConcordantCluster || ConcordantCluster[offsetConcordantCluster].RefID!=markedNodeChr || ConcordantCluster[offsetConcordantCluster].RefPos>concord0pos+ReadLen) && (PartialAlignCluster.size()==offsetPartialAlignCluster || PartialAlignCluster[offsetPartialAlignCluster].RefID!=markedNodeChr || PartialAlignCluster[offsetPartialAlignCluster].RefPos>concord0pos)){
 							if(concord0pos>markedNodeStart && concord0pos<markedNodeStart+thresh*20 && vNodes.size()!=0 && vNodes.back().Chr==markedNodeChr)
@@ -566,6 +590,7 @@ void SegmentGraph_t::BuildNode_STAR(const vector<int>& RefLength, SBamrecord_t& 
 				}
 			}
 
+			// If we didn't find 0-coverage position in the previous bit while loop, we will keep reading in more alignment record from BAM until we find a 0-coverage position or meet another discordant read group.
 			// check if  it indicates a 0-coverage position
 			bool is0coverage=true;
 			int currightmost=otherrightmost, curChr=0;
@@ -1527,7 +1552,7 @@ void SegmentGraph_t::RawEdgesOther(SBamrecord_t& Chimrecord, string bamfile){
 		CurrentTimeStr=ctime(&CurrentTime);
 		cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Starting building edges."<<endl;
 		while(bamreader.GetNextAlignment(record)){
-			// remove multi-aligned reads XXX check GetTag really works!!!
+			// remove multi-aligned reads check GetTag really works!!!
 			bool XAtag=record.HasTag("XA");
 			bool IHtag=record.HasTag("IH");
 			int IHtagvalue=0;
@@ -1664,7 +1689,7 @@ void SegmentGraph_t::RawEdges(SBamrecord_t& Chimrecord, string bamfile){
 		CurrentTimeStr=ctime(&CurrentTime);
 		cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Starting building edges."<<endl;
 		while(bamreader.GetNextAlignment(record)){
-			// remove multi-aligned reads XXX check GetTag really works!!!
+			// remove multi-aligned reads check GetTag really works!!!
 			bool XAtag=record.HasTag("XA");
 			bool IHtag=record.HasTag("IH");
 			int IHtagvalue=0;
