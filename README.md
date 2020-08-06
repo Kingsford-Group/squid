@@ -27,8 +27,8 @@ SQUID supports the following options:
 
  Parameters | Default value | Data type | Description
  ---        | :---:         | :---:     | ---         
- -c         |               | string    |             
- -f         |               | string    |             
+ -c         |               | string    | Chimeric BAM alignment (Required if using STAR aligner)            
+ -f         |               | string    | Genome FASTA file            
  -pt        |  0            | bool      | Phred type: 0 for Phred33, 1 for Phred64
  -pl        |  10           | int       | Maximum Length of continuous low Phred score to filter alignment
  -pm        |  4            | int       | Threshold to count as low Phred score
