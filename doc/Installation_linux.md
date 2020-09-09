@@ -28,11 +28,13 @@ cmake --version
 cd bamtools
 mkdir build
 cd build
-cmake ..
+cmake -DCMAKE_INSTALL_PREFIX=<bamtools_installation_folder> ..
+make
+make install
 ```
 4. Open the Makefile under squid again, to change the path for BamTools (the second line). After changing the path for BamTools, the second line in Makefile should look like this
 ```
-BAMTOOLS = <path to your_favorite_folder>/bamtools
+BAMTOOLS = <path to bamtools_installation_folder>
 ```
 
 ### Obtaining GLPK Library
