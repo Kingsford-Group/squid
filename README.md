@@ -20,10 +20,10 @@ export DYLD_LIBRARY_PATH=<glpk_folder>/lib
 ```
 
 # USAGE
+SQUID takes in a **sorted** BAM file of RNA-seq alignment and outputs the detection of TSVs. When the concordant and chimeric alignments are separated into two BAM files in the case of STAR alignment, the concordant BAM file must be **sorted**. The command to run SQUID and the parameters are as follows.
 ```
 squid [options] -b <Input_sorted_BAM> -o <Output_Prefix>
 ```
-SQUID supports the following options:
 
  Parameters | Default value | Data type | Description
  ---        | :---:         | :---:     | ---         
@@ -43,7 +43,6 @@ SQUID supports the following options:
  -TO        |  0            | bool      | Whether or not output ordering of all segments (0 for not outputing, 1 for outputing)
  -RG        |  0            | bool      | Whether or not output rearranged genome sequence (0 for not outputing, 1 for outputing)
 
-Note that SQUID requires that the input BAM file is sorted.
 
 # OUTPUT SPECIFICATION
 + <Output_Prefix>_sv.txt: a list of predicted TSV in bedpe format. This is the main output of SQUID. All positions in the file are 0-based. Each columns represents:
