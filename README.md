@@ -1,6 +1,6 @@
 ![SQUID logo](doc/SquidLogo.png){:height="50%" width="50%"}
 # OVERVIEW
-SQUID is designed to detect both fusion-gene and non-fusino-gene transcriptomic structural variations from RNA-seq alignment.
+SQUID is designed to detect both fusion-gene and non-fusion-gene transcriptomic structural variations from RNA-seq alignment.
 
 SQUID paper is published at [Genome Biology](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-018-1421-5). To reproduce the result of applying SQUID on simulation data and previously studied cell lines, follow the instructions from [squidtest](https://github.com/Kingsford-Group/squidtest)
 
