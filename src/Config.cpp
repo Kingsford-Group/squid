@@ -69,10 +69,12 @@ int print_help(){
 	printf("\t-CO\tbool\tOutput ordering of connected components (0)\n");
 	printf("\t-TO\tbool\tOutput ordering of all segments (0)\n");
 	printf("\t-RG\tbool\tOutput rearranged genome sequence (0)\n");
+	return 0;
 };
 
 int print_version(){
 	printf("%s\n", SQUIDversion.c_str());
+	return 0;
 };
 
 bool parse_arguments(int argc, char* argv[]){
