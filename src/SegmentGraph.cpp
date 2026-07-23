@@ -16,6 +16,27 @@ bool MinHeapComp(const SingleBamRec_t& lhs, const SingleBamRec_t& rhs){
 	return !(lhs<rhs);
 };
 
+static void NormalizeSeedNodes(vector<Node_t>& nodes, const string& label){
+	if(nodes.size()<2)
+		return;
+	sort(nodes.begin(), nodes.end());
+	vector<Node_t> normalized;
+	normalized.reserve(nodes.size());
+	int mergedCount=0;
+	for(const Node_t& node : nodes){
+		if(normalized.size()==0 || normalized.back().Chr!=node.Chr || normalized.back().Position+normalized.back().Length<=node.Position)
+			normalized.push_back(node);
+		else{
+			int mergedEnd=max(normalized.back().Position+normalized.back().Length, node.Position+node.Length);
+			normalized.back().Length=mergedEnd-normalized.back().Position;
+			mergedCount++;
+		}
+	}
+	if(mergedCount>0)
+		cerr<<"[SQUID] normalized "<<mergedCount<<" overlapping seed nodes in "<<label<<".\n";
+	nodes.swap(normalized);
+};
+
 pair<int,int> ExtremeValue(vector<int>::iterator itbegin, vector<int>::iterator itend){
 	pair<int,int> x=make_pair(*itbegin, *itbegin);
 	for(vector<int>::iterator it=itbegin; it!=itend; it++){
@@ -682,9 +703,20 @@ void SegmentGraph_t::BuildNode_STAR(const vector<int>& RefLength, SBamrecord_t& 
 	time(&CurrentTime);
 	CurrentTimeStr=ctime(&CurrentTime);
 	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Building nodes, finish seeding."<<endl;
+	NormalizeSeedNodes(vNodes, "BuildNode_STAR");
 	// checking node
 	for(int i=0; i<vNodes.size(); i++){
 		assert(vNodes[i].Length>0 && vNodes[i].Position+vNodes[i].Length<=RefLength[vNodes[i].Chr]);
+		if(i+1<vNodes.size() && vNodes[i].Chr==vNodes[i+1].Chr && vNodes[i].Position+vNodes[i].Length>vNodes[i+1].Position){
+			cerr<<"[SQUID] node order violation at index "<<i<<":\n";
+			cerr<<"  current  chr="<<vNodes[i].Chr<<" pos="<<vNodes[i].Position<<" len="<<vNodes[i].Length<<" end="<<vNodes[i].Position+vNodes[i].Length<<"\n";
+			cerr<<"  next     chr="<<vNodes[i+1].Chr<<" pos="<<vNodes[i+1].Position<<" len="<<vNodes[i+1].Length<<" end="<<vNodes[i+1].Position+vNodes[i+1].Length<<"\n";
+			int left=max(0, i-3);
+			int right=min((int)vNodes.size()-1, i+3);
+			for(int j=left; j<=right; j++)
+				cerr<<"  vNodes["<<j<<"] chr="<<vNodes[j].Chr<<" pos="<<vNodes[j].Position<<" len="<<vNodes[j].Length<<" end="<<vNodes[j].Position+vNodes[j].Length<<"\n";
+			assert(false && "SegmentGraph node order violation");
+		}
 		if(i+1<vNodes.size())
 			assert((vNodes[i].Chr!=vNodes[i+1].Chr) || (vNodes[i].Chr==vNodes[i+1].Chr && vNodes[i].Position+vNodes[i].Length<=vNodes[i+1].Position));
 	}
@@ -1095,6 +1127,7 @@ void SegmentGraph_t::BuildNode_BWA(const vector<int>& RefLength, string bamfile)
 	time(&CurrentTime);
 	CurrentTimeStr=ctime(&CurrentTime);
 	cout<<"["<<CurrentTimeStr.substr(0, CurrentTimeStr.size()-1)<<"] Building nodes, finish seeding."<<endl;
+	NormalizeSeedNodes(vNodes, "BuildNode_BWA");
 	// checking node
 	for(int i=0; i<vNodes.size(); i++){
 		assert(vNodes[i].Length>0 && vNodes[i].Position+vNodes[i].Length<=RefLength[vNodes[i].Chr]);
