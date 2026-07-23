@@ -707,16 +707,6 @@ void SegmentGraph_t::BuildNode_STAR(const vector<int>& RefLength, SBamrecord_t& 
 	// checking node
 	for(int i=0; i<vNodes.size(); i++){
 		assert(vNodes[i].Length>0 && vNodes[i].Position+vNodes[i].Length<=RefLength[vNodes[i].Chr]);
-		if(i+1<vNodes.size() && vNodes[i].Chr==vNodes[i+1].Chr && vNodes[i].Position+vNodes[i].Length>vNodes[i+1].Position){
-			cerr<<"[SQUID] node order violation at index "<<i<<":\n";
-			cerr<<"  current  chr="<<vNodes[i].Chr<<" pos="<<vNodes[i].Position<<" len="<<vNodes[i].Length<<" end="<<vNodes[i].Position+vNodes[i].Length<<"\n";
-			cerr<<"  next     chr="<<vNodes[i+1].Chr<<" pos="<<vNodes[i+1].Position<<" len="<<vNodes[i+1].Length<<" end="<<vNodes[i+1].Position+vNodes[i+1].Length<<"\n";
-			int left=max(0, i-3);
-			int right=min((int)vNodes.size()-1, i+3);
-			for(int j=left; j<=right; j++)
-				cerr<<"  vNodes["<<j<<"] chr="<<vNodes[j].Chr<<" pos="<<vNodes[j].Position<<" len="<<vNodes[j].Length<<" end="<<vNodes[j].Position+vNodes[j].Length<<"\n";
-			assert(false && "SegmentGraph node order violation");
-		}
 		if(i+1<vNodes.size())
 			assert((vNodes[i].Chr!=vNodes[i+1].Chr) || (vNodes[i].Chr==vNodes[i+1].Chr && vNodes[i].Position+vNodes[i].Length<=vNodes[i+1].Position));
 	}
