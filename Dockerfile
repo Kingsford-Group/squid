@@ -37,6 +37,3 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /work
 COPY --from=build /opt/squid/bin/squid /usr/local/bin/squid
-
-ENTRYPOINT ["squid"]
-CMD ["--help"]
